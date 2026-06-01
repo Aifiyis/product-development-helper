@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="trend-workspace">
+    <aside class="trend-parameters">
+        <h2><i class="bi bi-search"></i> Discovery Parameters</h2>
+        <form method="post" class="trend-form">
+            <label class="form-label" for="platform">Platform</label>
+            <select class="form-select" id="platform" name="platform">
+                {% for platform in platforms %}
+                <option value="{{ platform }}" {% if filters.platform == platform %}selected{% endif %}>{{ platform }}</option>
+                {% endfor %}
+            </select>
+
+            <label class="form-label" for="language">Language</label>
+            <select class="form-select" id="language" name="language">
+                {% for language in languages %}
+                <option value="{{ language }}" {% if filters.language == language %}selected{% endif %}>{{ language }}</option>
+                {% endfor %}
+            </select>
+
+            <label class="form-label" for="category">Ad Category</label>
+            <select class="form-select" id="category" name="category">
+                {% for category in categories %}
+                <option value="{{ category }}" {% if filters.category == category %}selected{% endif %}>{{ category }}</option>
+                {% endfor %}
+            </select>
+
+            <button type="submit" class="btn btn-primary trend-submit">
+                <i class="bi bi-graph-up-arrow"></i>
+                Catch
+            </button>
+        </form>
+    </aside>
+
+    <main class="trend-results">
+        <div class="trend-toolbar">
+            <div>
+                Results for
+                <strong>{{ results.platform }}</strong>
+                <span>·</span>
+                <strong>{{ results.language }}</strong>
+                <span>·</span>
+                <strong>{{ results.category }}</strong>
+            </div>
+            <div class="trend-actions">
+                <button type="button" class="btn btn-light btn-sm" data-copy-tags data-tags="{{ results.hashtags|map(attribute='tag')|join(' ') }}">
+                    <i class="bi bi-copy"></i>
+                    CopyTags
+                </button>
+                <form method="post" action="{{ url_for('hashtag_discovery.export') }}">
+                    <input type="hidden" name="payload" value="{{ results|tojson|forceescape }}">
+                    <button type="submit" class="btn btn-light btn-sm">
+                        <i class="bi bi-download"></i>
+                        ExportCSV
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <section class="trend-panel">
+            <div class="trend-panel-heading">
+                <h2><i class="bi bi-hash"></i> Trending Hashtags</h2>
+                <span>{{ results.source }} · {{ results.generated_at }}</span>
+            </div>
+            <div class="trend-card-grid">
+                {% for item in results.hashtags %}
+                <article class="trend-card">
+                    <div class="trend-card-title">
+                        <h3>{{ item.tag }}</h3>
+                        <span class="trend-badge {% if 'Rising' in item.trend %}rising{% endif %}">{{ item.trend }}</span>
+                    </div>
+                    <strong>Vol: {{ item.volume }}</strong>
+                    <p>{{ item.insight }}</p>
+                </article>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="trend-panel">
+            <div class="trend-panel-heading">
+                <h2><i class="bi bi-lightning-charge"></i> Hot Topics</h2>
+                <span>Top 5 themes</span>
+            </div>
+            <div class="topic-list">
+                {% for item in results.topics %}
+                <article class="topic-row">
+                    <div>
+                        <h3>{{ item.title }}</h3>
+                        <p>{{ item.insight }}</p>
+                    </div>
+                    <span class="trend-badge {% if 'Rising' in item.trend %}rising{% endif %}">{{ item.trend }}</span>
+                </article>
+                {% endfor %}
+            </div>
+        </section>
+    </main>
+</section>
+{% endblock %}

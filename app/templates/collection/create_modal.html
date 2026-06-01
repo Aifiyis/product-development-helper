@@ -1,0 +1,48 @@
+<div class="modal fade" id="createTaskModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <form method="post" action="{{ url_for(endpoint + '.create_task') }}" class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">创建采集</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">采集关键词</label>
+                    <textarea class="form-control" name="product_keywords" rows="3" placeholder="每行一个关键词" required></textarea>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">平台选择</label>
+                    <select class="form-select" name="collection_platforms" multiple size="6" required>
+                        {% for value, label in platform_choices %}
+                        <option value="{{ value }}" {% if value == "xiaohongshu" %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">评论监控关键词</label>
+                    <textarea class="form-control" name="comment_monitor_keywords" rows="3" placeholder="逗号或换行分隔"></textarea>
+                </div>
+                <div class="row g-3">
+                    <div class="col-6">
+                        <label class="form-label">点赞量起始值</label>
+                        <input class="form-control" name="min_likes" type="number" min="0" value="0">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">采集周期</label>
+                        <select class="form-select" name="collection_cycle">
+                            <option value="30m">30 分钟</option>
+                            <option value="1h">1 小时</option>
+                            <option value="6h" selected>6 小时</option>
+                            <option value="12h">12 小时</option>
+                            <option value="1d">1 天</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">取消</button>
+                <button type="submit" class="btn btn-primary">保存任务</button>
+            </div>
+        </form>
+    </div>
+</div>

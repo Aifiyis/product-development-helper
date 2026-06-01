@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="creative-workspace">
+    <aside class="creative-reference">
+        <h2><i class="bi bi-card-image"></i> Product Reference</h2>
+        <label class="creative-upload" for="productImage">
+            <input id="productImage" type="file" accept="image/*" data-creative-upload>
+            <img alt="" data-creative-preview hidden>
+            <span class="creative-upload-empty" data-creative-empty>
+                <i class="bi bi-image"></i>
+                Upload Product Photo
+            </span>
+        </label>
+
+        <form method="post" class="creative-form">
+            <h3>AD SETTINGS</h3>
+            <label class="form-label" for="productName">Product Name</label>
+            <input class="form-control" id="productName" name="product_name" value="{{ form.product_name }}" required>
+
+            <label class="form-label" for="audience">Target Audience</label>
+            <input class="form-control" id="audience" name="audience" value="{{ form.audience }}">
+
+            <label class="form-label" for="sellingPoint">Selling Points</label>
+            <textarea class="form-control" id="sellingPoint" name="selling_point" rows="3">{{ form.selling_point }}</textarea>
+
+            <label class="form-label" for="adCopy">Ad Copy Overlay</label>
+            <input class="form-control" id="adCopy" name="ad_copy" value="{{ form.ad_copy }}">
+
+            <label class="form-label" for="aspectRatio">Aspect Ratio</label>
+            <select class="form-select" id="aspectRatio" name="aspect_ratio">
+                {% for value, label in aspect_ratios %}
+                <option value="{{ value }}" {% if form.aspect_ratio == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+
+            <label class="form-label" for="imageProvider">Image Provider</label>
+            <select class="form-select" id="imageProvider" name="image_provider" data-image-provider>
+                <option value="openai" {% if form.image_provider == "openai" %}selected{% endif %}>OpenAI Images API</option>
+                <option value="gemini" {% if form.image_provider == "gemini" %}selected{% endif %}>Gemini Imagen</option>
+            </select>
+
+            <button type="submit" class="btn creative-primary">
+                <i class="bi bi-stars"></i>
+                Generate Ad Concepts
+            </button>
+        </form>
+    </aside>
+
+    <main class="creative-results">
+        <div class="creative-header">
+            <div>
+                <h2>Product Extension Concepts (10 Themes)</h2>
+                <p>选择一个延伸场景，沉淀卖点、画面方向和后续生图提示词。</p>
+                <small class="creative-source">Source: {{ source }}</small>
+            </div>
+            <button type="button" class="btn creative-bulk" data-mark-all-generated>
+                <i class="bi bi-images"></i>
+                Generate All Missing Images
+            </button>
+        </div>
+
+        <div class="creative-grid">
+            {% for concept in concepts %}
+            <article class="creative-card" data-concept-card>
+                <h3>{{ concept.index }}. {{ concept.theme }}</h3>
+                <p>{{ concept.scene }}</p>
+                <div class="creative-image-slot" data-image-slot hidden></div>
+                <div class="creative-angle">
+                    <strong>卖点延伸</strong>
+                    <span>{{ concept.angle }}</span>
+                </div>
+                <div class="creative-actions">
+                    <button
+                        type="button"
+                        class="btn creative-secondary"
+                        data-generate-image
+                        data-prompt="{{ concept.prompt|forceescape }}"
+                        data-aspect-ratio="{{ form.aspect_ratio }}"
+                        data-endpoint="{{ url_for('product_extension.generate_image') }}"
+                    >
+                        <i class="bi bi-image"></i>
+                        Generate Image
+                    </button>
+                    <button type="button" class="btn creative-icon" data-copy-tags data-tags="{{ concept.prompt|forceescape }}">
+                        <i class="bi bi-copy"></i>
+                    </button>
+                </div>
+            </article>
+            {% endfor %}
+        </div>
+    </main>
+</section>
+{% endblock %}

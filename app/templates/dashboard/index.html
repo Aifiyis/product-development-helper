@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="stats-grid">
+    {% for item in stats %}
+        {% include "components/stat_card.html" %}
+    {% endfor %}
+</section>
+
+<section class="section-heading">
+    <h2>功能模块</h2>
+</section>
+
+<section class="module-grid">
+    {% for module in modules %}
+    <a class="module-card module-link" href="{{ module.url }}">
+        <div class="module-image">
+            <i class="bi {{ module.icon }}"></i>
+        </div>
+        <h3>{{ module.title }}</h3>
+        <p>{{ module.description }}</p>
+        <span class="module-tag">{{ module.tag }}</span>
+    </a>
+    {% endfor %}
+</section>
+{% endblock %}

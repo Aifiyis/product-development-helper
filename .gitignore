@@ -1,0 +1,10 @@
+.venv/
+.env
+__pycache__/
+*.py[cod]
+instance/*.db
+instance/*.sqlite
+instance/*.log
+app/static/generated/*.png
+app/static/generated/*.jpg
+app/static/generated/*.webp

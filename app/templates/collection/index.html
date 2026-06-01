@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="content-panel">
+    <div class="panel-header">
+        <div>
+            <h2>{{ platform_label }}</h2>
+            <p>{{ tasks|length }} 个任务，{{ notes|length }} 条采集记录</p>
+        </div>
+        <div class="toolbar">
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createTaskModal">
+                <i class="bi bi-plus-lg"></i>
+                创建采集
+            </button>
+            <form method="post" action="{{ url_for(endpoint + '.export') }}">
+                <button type="submit" class="btn btn-outline-secondary">
+                    <i class="bi bi-download"></i>
+                    导出CSV
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <div class="task-strip">
+        {% for task in tasks[:5] %}
+        <div class="task-pill">
+            <span>{{ task.product_keywords.splitlines()[0] if task.product_keywords else "未命名任务" }}</span>
+            <small>{{ task.selected_platform_labels|join(", ") }} · {{ task.collection_cycle }} · {{ task.status }}</small>
+        </div>
+        {% else %}
+        <span class="muted-text">暂无采集任务</span>
+        {% endfor %}
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-hover align-middle collection-table">
+            <thead>
+            <tr>
+                <th>采集关键词</th>
+                <th>标题</th>
+                <th>点赞量</th>
+                <th>评论量</th>
+                <th>发布时间</th>
+                <th>采集时间</th>
+                <th class="text-end">操作</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for note in notes %}
+            <tr class="note-row" data-detail-url="{{ url_for(endpoint + '.note_detail', note_id=note.id) }}">
+                <td>{{ note.product_keyword or "-" }}</td>
+                <td class="title-cell">{{ note.title or "未命名内容" }}</td>
+                <td>{{ note.likes_count }}</td>
+                <td>{{ note.comments_count }}</td>
+                <td>{{ note.publish_time.strftime("%Y-%m-%d %H:%M") if note.publish_time else "-" }}</td>
+                <td>{{ note.collection_time.strftime("%Y-%m-%d %H:%M") }}</td>
+                <td class="text-end">
+                    <button type="button" class="btn btn-sm btn-outline-primary note-action" data-detail-url="{{ url_for(endpoint + '.note_detail', note_id=note.id) }}">
+                        分析报告
+                    </button>
+                    {% if note.source_url %}
+                    <a class="btn btn-sm btn-outline-secondary" href="{{ note.source_url }}" target="_blank" rel="noreferrer">跳转原文</a>
+                    {% else %}
+                    <button type="button" class="btn btn-sm btn-outline-secondary" disabled>跳转原文</button>
+                    {% endif %}
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="7">
+                    <div class="table-empty">
+                        <i class="bi bi-inbox"></i>
+                        暂无采集记录
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+{% include "collection/create_modal.html" %}
+{% include "collection/detail_modal.html" %}
+{% endblock %}

@@ -1,0 +1,41 @@
+<div class="modal fade" id="noteDetailModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title" data-note-field="title">内容详情</h5>
+                    <small class="text-muted" data-note-field="meta"></small>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <dl class="detail-grid">
+                    <div>
+                        <dt>采集关键词</dt>
+                        <dd data-note-field="product_keyword"></dd>
+                    </div>
+                    <div>
+                        <dt>点赞量</dt>
+                        <dd data-note-field="likes_count"></dd>
+                    </div>
+                    <div>
+                        <dt>评论量</dt>
+                        <dd data-note-field="comments_count"></dd>
+                    </div>
+                    <div>
+                        <dt>发布时间</dt>
+                        <dd data-note-field="publish_time"></dd>
+                    </div>
+                </dl>
+                <h6>正文</h6>
+                <p class="detail-content" data-note-field="content"></p>
+                <h6>触发关键词评论</h6>
+                <div class="triggered-comments" data-note-field="triggered_comments"></div>
+                <a class="btn btn-outline-secondary btn-sm mt-3" data-note-field="source_url" target="_blank" rel="noreferrer">
+                    <i class="bi bi-box-arrow-up-right"></i>
+                    跳转原文
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
