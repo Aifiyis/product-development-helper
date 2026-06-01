@@ -1,7 +1,7 @@
 from flask import Blueprint, render_template, url_for
 from flask_login import login_required
 
-from app.models import CollectionTask, CollectedNote, User
+from app.models import CollectionTask, CollectedNote, CompetitorProduct, CompetitorTask, User
 
 
 bp = Blueprint("dashboard", __name__)
@@ -37,7 +37,7 @@ def index():
             "description": "跟踪竞品内容声量与互动变化",
             "tag": "监控",
             "icon": "bi-card-image",
-            "url": url_for("dashboard.competitor"),
+            "url": url_for("competitor.index"),
         },
         {
             "title": "平台采集",
@@ -56,8 +56,8 @@ def index():
     ]
     stats = [
         {"label": "功能模块", "value": len(modules), "icon": "bi-grid-3x3-gap-fill", "tone": "primary"},
-        {"label": "总任务数", "value": CollectionTask.query.count(), "icon": "bi-clipboard2-check-fill", "tone": "success"},
-        {"label": "已完成", "value": CollectedNote.query.count(), "icon": "bi-check-circle-fill", "tone": "warning"},
+        {"label": "总任务数", "value": CollectionTask.query.count() + CompetitorTask.query.count(), "icon": "bi-clipboard2-check-fill", "tone": "success"},
+        {"label": "已完成", "value": CollectedNote.query.count() + CompetitorProduct.query.count(), "icon": "bi-check-circle-fill", "tone": "warning"},
         {"label": "用户数", "value": User.query.count(), "icon": "bi-person-fill", "tone": "secondary"},
     ]
     return render_template("dashboard/index.html", page_title="中控台", stats=stats, modules=modules)
@@ -67,13 +67,6 @@ def index():
 @login_required
 def trends():
     return render_template("dashboard/placeholder.html", page_title="产品趋势库", title="产品趋势库")
-
-
-@bp.get("/competitor")
-@login_required
-def competitor():
-    return render_template("dashboard/placeholder.html", page_title="竞品监控", title="竞品监控")
-
 
 @bp.get("/reports")
 @login_required

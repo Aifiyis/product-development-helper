@@ -1,0 +1,44 @@
+<div class="modal fade" id="competitorProductModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title" data-competitor-field="title">产品详情</h5>
+                    <small class="text-muted" data-competitor-field="meta"></small>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="competitor-detail-layout">
+                    <div>
+                        <div id="competitorMediaCarousel" class="carousel slide competitor-media" data-bs-ride="false">
+                            <div class="carousel-inner" data-competitor-field="media"></div>
+                            <button class="carousel-control-prev" type="button" data-bs-target="#competitorMediaCarousel" data-bs-slide="prev">
+                                <span class="carousel-control-prev-icon"></span>
+                            </button>
+                            <button class="carousel-control-next" type="button" data-bs-target="#competitorMediaCarousel" data-bs-slide="next">
+                                <span class="carousel-control-next-icon"></span>
+                            </button>
+                        </div>
+                    </div>
+                    <div>
+                        <dl class="detail-grid competitor-detail-grid">
+                            <div><dt>来源</dt><dd data-competitor-field="source_domain"></dd></div>
+                            <div><dt>价格</dt><dd data-competitor-field="price"></dd></div>
+                            <div><dt>评论数</dt><dd data-competitor-field="reviews_count"></dd></div>
+                            <div><dt>广告量</dt><dd data-competitor-field="fb_ad_count"></dd></div>
+                        </dl>
+                        <h6>变体</h6>
+                        <div class="triggered-comments" data-competitor-field="variants"></div>
+                        <h6 class="mt-3">描述</h6>
+                        <p class="detail-content" data-competitor-field="description"></p>
+                        <a class="btn btn-outline-secondary btn-sm mt-3" data-competitor-field="product_url" target="_blank" rel="noreferrer">
+                            <i class="bi bi-box-arrow-up-right"></i>
+                            跳转原文
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

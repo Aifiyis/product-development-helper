@@ -6,7 +6,7 @@ from werkzeug.security import generate_password_hash
 
 from app.config import DevelopmentConfig
 from app.extensions import db, login_manager, scheduler
-from app.models import CollectionTask, User
+from app.models import CollectionTask, CompetitorProduct, CompetitorTask, User
 from app.services.scheduler_service import restore_active_jobs
 
 
@@ -40,12 +40,14 @@ def create_app(config_object=DevelopmentConfig):
 
 def register_blueprints(app):
     from app.blueprints.auth.routes import bp as auth_bp
+    from app.blueprints.competitor.routes import bp as competitor_bp
     from app.blueprints.dashboard.routes import bp as dashboard_bp
     from app.blueprints.hashtag_discovery.routes import bp as hashtag_discovery_bp
     from app.blueprints.product_extension.routes import bp as product_extension_bp
     from app.blueprints.xiaohongshu.routes import bp as xiaohongshu_bp
 
     app.register_blueprint(auth_bp)
+    app.register_blueprint(competitor_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(hashtag_discovery_bp)
     app.register_blueprint(product_extension_bp)
@@ -65,7 +67,13 @@ def register_error_handlers(app):
 def register_shell_context(app):
     @app.shell_context_processor
     def context():
-        return {"db": db, "User": User, "CollectionTask": CollectionTask}
+        return {
+            "db": db,
+            "User": User,
+            "CollectionTask": CollectionTask,
+            "CompetitorTask": CompetitorTask,
+            "CompetitorProduct": CompetitorProduct,
+        }
 
 
 def ensure_default_admin():

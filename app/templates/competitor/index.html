@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="content-panel">
+    <div class="panel-header">
+        <div>
+            <h2>竞品监控</h2>
+            <p>{{ tasks|length }} 个任务，{{ products|length }} 条产品记录</p>
+        </div>
+        <div class="toolbar">
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createCompetitorTaskModal">
+                <i class="bi bi-plus-lg"></i>
+                创建采集
+            </button>
+            <form method="post" action="{{ url_for('competitor.export') }}">
+                <button type="submit" class="btn btn-outline-secondary">
+                    <i class="bi bi-download"></i>
+                    导出CSV
+                </button>
+            </form>
+            <a class="btn btn-outline-primary" href="{{ url_for('competitor.sites') }}">
+                <i class="bi bi-list-ul"></i>
+                竞品站列表
+            </a>
+        </div>
+    </div>
+
+    <div class="task-strip">
+        {% for task in tasks[:8] %}
+        <div class="task-pill">
+            <span>{{ task.target_category or "全部品类" }}</span>
+            <small>{{ task.site_list|length }} 站 · {{ task.products_per_site }} 条/站 · {{ task.collection_cycle }}</small>
+            <form method="post" action="{{ url_for('competitor.run_task', task_id=task.id) }}">
+                <button class="btn btn-sm btn-outline-primary" type="submit">立即运行</button>
+            </form>
+        </div>
+        {% else %}
+        <span class="muted-text">暂无竞品采集任务</span>
+        {% endfor %}
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-hover align-middle collection-table">
+            <thead>
+            <tr>
+                <th>采集来源</th>
+                <th>标题</th>
+                <th>价格</th>
+                <th>评论数</th>
+                <th>广告量</th>
+                <th>采集时间</th>
+                <th class="text-end">操作</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for product in products %}
+            <tr class="competitor-product-row" data-detail-url="{{ url_for('competitor.product_detail', product_id=product.id) }}">
+                <td>{{ product.source_domain }}</td>
+                <td class="title-cell">{{ product.title or "未命名产品" }}</td>
+                <td>{{ product.price or "-" }}</td>
+                <td>{{ product.reviews_count }}</td>
+                <td>{{ product.fb_ad_count if product.fb_ad_count is not none else "-" }}</td>
+                <td>{{ product.collected_at.strftime("%Y-%m-%d %H:%M") }}</td>
+                <td class="text-end">
+                    <button type="button" class="btn btn-sm btn-outline-primary competitor-product-action" data-detail-url="{{ url_for('competitor.product_detail', product_id=product.id) }}">详情</button>
+                    {% if product.product_url %}
+                    <a class="btn btn-sm btn-outline-secondary" href="{{ product.product_url }}" target="_blank" rel="noreferrer">跳转</a>
+                    {% endif %}
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="7">
+                    <div class="table-empty">
+                        <i class="bi bi-inbox"></i>
+                        暂无竞品产品记录
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+{% include "competitor/create_modal.html" %}
+{% include "competitor/detail_modal.html" %}
+{% endblock %}

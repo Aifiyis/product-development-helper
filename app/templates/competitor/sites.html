@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="content-panel">
+    <div class="panel-header">
+        <div>
+            <h2>竞品站列表</h2>
+            <p>按综合站和垂直站分类维护，供采集任务调用。</p>
+        </div>
+        <div class="toolbar">
+            <a class="btn btn-outline-secondary" href="{{ url_for('competitor.index') }}">返回监控</a>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#trackCompetitorModal">
+                <i class="bi bi-search"></i>
+                跟踪趋势
+            </button>
+        </div>
+    </div>
+
+    {% for category, sites in grouped.items() %}
+    <section class="site-group">
+        <h3>{{ categories.get(category, category) }} <span>{{ sites|length }}</span></h3>
+        <div class="table-responsive">
+            <table class="table align-middle">
+                <thead>
+                <tr>
+                    <th style="width: 42px;"></th>
+                    <th>网址</th>
+                    <th>简短介绍</th>
+                    <th>被抓取原因</th>
+                    <th>来源</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for site in sites %}
+                <tr>
+                    <td>
+                        {% if site.source == "discovered" %}
+                        <input class="form-check-input" type="checkbox">
+                        {% endif %}
+                    </td>
+                    <td><a href="https://{{ site.domain }}" target="_blank" rel="noreferrer">{{ site.domain }}</a></td>
+                    <td>{{ site.description }}</td>
+                    <td>{{ site.scrape_reason }}</td>
+                    <td><span class="badge text-bg-{{ 'info' if site.source == 'discovered' else 'secondary' }}">{{ site.source }}</span></td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+    {% endfor %}
+</section>
+
+{% include "competitor/track_modal.html" %}
+{% endblock %}

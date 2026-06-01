@@ -1,7 +1,8 @@
 from datetime import datetime
 
 from app.extensions import db, scheduler
-from app.models import CollectionTask
+from app.models import CollectionTask, CompetitorTask
+from app.services.competitor_scraper import CompetitorScraper
 from app.services.douyin_scraper import DouyinScraper
 from app.services.xiaohongshu_scraper import XiaohongshuScraper
 
@@ -63,7 +64,40 @@ def register_task_job(task, app):
     return job_id
 
 
+def run_competitor_task_by_id(task_id, app):
+    with app.app_context():
+        task = CompetitorTask.query.get(task_id)
+        if not task or task.status != "active":
+            return 0
+        saved = CompetitorScraper().run_collection(task)
+        task.last_run_at = datetime.utcnow()
+        db.session.commit()
+        return saved
+
+
+def register_competitor_job(task, app):
+    job_id = task.scheduler_job_id or f"competitor_task_{task.id}"
+    existing = scheduler.get_job(job_id)
+    if existing:
+        scheduler.remove_job(job_id)
+
+    scheduler.add_job(
+        id=job_id,
+        func=run_competitor_task_by_id,
+        trigger="interval",
+        kwargs={"task_id": task.id, "app": app},
+        replace_existing=True,
+        **parse_cycle(task.collection_cycle),
+    )
+    task.scheduler_job_id = job_id
+    db.session.commit()
+    return job_id
+
+
 def restore_active_jobs(app):
     active_tasks = CollectionTask.query.filter_by(status="active").all()
     for task in active_tasks:
         register_task_job(task, app)
+    active_competitor_tasks = CompetitorTask.query.filter_by(status="active").all()
+    for task in active_competitor_tasks:
+        register_competitor_job(task, app)

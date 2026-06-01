@@ -96,6 +96,62 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
+    const competitorModalEl = document.getElementById("competitorProductModal");
+    if (competitorModalEl) {
+        const competitorModal = new bootstrap.Modal(competitorModalEl);
+        const cfield = (name) => competitorModalEl.querySelector(`[data-competitor-field="${name}"]`);
+
+        async function openCompetitorDetail(url) {
+            const response = await fetch(url);
+            if (!response.ok) {
+                return;
+            }
+            const product = await response.json();
+            cfield("title").textContent = product.title || "产品详情";
+            cfield("meta").textContent = `${product.source_type || "-"} · ${product.collected_at || "-"}`;
+            cfield("source_domain").textContent = product.source_domain || "-";
+            cfield("price").textContent = product.price || "-";
+            cfield("reviews_count").textContent = product.reviews_count ?? 0;
+            cfield("fb_ad_count").textContent = product.fb_ad_count ?? "-";
+            cfield("description").textContent = product.description || "暂无描述";
+
+            const mediaEl = cfield("media");
+            const media = product.product_media || {};
+            const images = Array.from(new Set([media.main, ...(media.carousel || [])].filter(Boolean)));
+            mediaEl.innerHTML = images.length
+                ? images.map((src, index) => `<div class="carousel-item ${index === 0 ? "active" : ""}"><img src="${src}" alt=""></div>`).join("")
+                : '<div class="carousel-item active"><div class="competitor-media-empty">暂无图片</div></div>';
+
+            const variantsEl = cfield("variants");
+            const variants = Array.isArray(product.variants) ? product.variants : [];
+            variantsEl.innerHTML = variants.length
+                ? variants.map((variant) => `<div class="triggered-comment">${variant.title || "-"} · ${variant.price || "-"} · ${variant.available === false ? "售罄" : "可售"}</div>`).join("")
+                : '<div class="triggered-comment text-muted">暂无变体</div>';
+
+            const link = cfield("product_url");
+            if (product.product_url) {
+                link.href = product.product_url;
+                link.classList.remove("disabled");
+            } else {
+                link.removeAttribute("href");
+                link.classList.add("disabled");
+            }
+            competitorModal.show();
+        }
+
+        document.querySelectorAll(".competitor-product-row").forEach((row) => {
+            row.addEventListener("click", (event) => {
+                if (event.target.closest("a, button")) {
+                    return;
+                }
+                openCompetitorDetail(row.dataset.detailUrl);
+            });
+        });
+        document.querySelectorAll(".competitor-product-action").forEach((button) => {
+            button.addEventListener("click", () => openCompetitorDetail(button.dataset.detailUrl));
+        });
+    }
+
     const modalEl = document.getElementById("noteDetailModal");
     if (!modalEl) {
         return;

@@ -1,0 +1,28 @@
+<div class="modal fade" id="trackCompetitorModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <form method="post" action="{{ url_for('competitor.track_sites') }}" class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">跟踪趋势</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">关键词</label>
+                    <input class="form-control" name="keyword" placeholder="例如 personalized pet memorial" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">品类</label>
+                    <select class="form-select" name="category">
+                        {% for key, label in categories.items() %}
+                        <option value="{{ key }}">{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">取消</button>
+                <button type="submit" class="btn btn-primary">跟踪趋势</button>
+            </div>
+        </form>
+    </div>
+</div>

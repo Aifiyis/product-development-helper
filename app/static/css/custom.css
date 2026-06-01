@@ -243,6 +243,10 @@ body {
     background: #f8fafc;
 }
 
+.task-pill form {
+    margin: 0;
+}
+
 .task-pill small,
 .muted-text {
     color: var(--text-muted);
@@ -328,6 +332,56 @@ body {
 .empty-state h2 {
     margin: 0;
     color: #1f2733;
+}
+
+.site-group {
+    margin-top: 24px;
+}
+
+.site-group h3 {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 0 12px;
+    font-size: 18px;
+    font-weight: 750;
+}
+
+.site-group h3 span {
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: #edf6ff;
+    color: #2f80ed;
+    font-size: 12px;
+}
+
+.competitor-detail-layout {
+    display: grid;
+    grid-template-columns: minmax(260px, 420px) minmax(0, 1fr);
+    gap: 20px;
+}
+
+.competitor-media {
+    overflow: hidden;
+    border-radius: 8px;
+    background: #f8fafc;
+}
+
+.competitor-media .carousel-item img,
+.competitor-media-empty {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    object-fit: cover;
+}
+
+.competitor-media-empty {
+    display: grid;
+    place-items: center;
+    color: var(--text-muted);
+}
+
+.competitor-detail-grid {
+    grid-template-columns: repeat(2, 1fr);
 }
 
 .login-page {
@@ -886,6 +940,10 @@ body {
     .module-grid,
     .detail-grid,
     .trend-card-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .competitor-detail-layout {
         grid-template-columns: 1fr;
     }
 
