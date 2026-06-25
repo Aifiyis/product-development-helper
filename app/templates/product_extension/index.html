@@ -40,10 +40,12 @@
                 <option value="gemini" {% if form.image_provider == "gemini" %}selected{% endif %}>Gemini Imagen</option>
             </select>
 
+            {% if current_user.can("product_extension.generate") %}
             <button type="submit" class="btn creative-primary">
                 <i class="bi bi-stars"></i>
                 Generate Ad Concepts
             </button>
+            {% endif %}
         </form>
     </aside>
 
@@ -71,6 +73,7 @@
                     <span>{{ concept.angle }}</span>
                 </div>
                 <div class="creative-actions">
+                    {% if current_user.can("product_extension.generate_image") %}
                     <button
                         type="button"
                         class="btn creative-secondary"
@@ -82,6 +85,7 @@
                         <i class="bi bi-image"></i>
                         Generate Image
                     </button>
+                    {% endif %}
                     <button type="button" class="btn creative-icon" data-copy-tags data-tags="{{ concept.prompt|forceescape }}">
                         <i class="bi bi-copy"></i>
                     </button>

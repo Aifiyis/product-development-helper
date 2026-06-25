@@ -2,9 +2,10 @@ import csv
 import json
 from io import BytesIO, StringIO
 
-from flask import Blueprint, current_app, render_template, request, send_file
-from flask_login import login_required
+from flask import Blueprint, abort, current_app, render_template, request, send_file
+from flask_login import current_user, login_required
 
+from app.permissions import permission_required
 from app.services.hashtag_discovery_service import (
     AD_CATEGORIES,
     LANGUAGES,
@@ -18,7 +19,10 @@ bp = Blueprint("hashtag_discovery", __name__, url_prefix="/hashtag-discovery")
 
 @bp.route("", methods=["GET", "POST"])
 @login_required
+@permission_required("hashtag.view")
 def index():
+    if request.method == "POST" and not current_user.can("hashtag.catch"):
+        abort(403)
     filters = {
         "platform": request.form.get("platform", "TikTok"),
         "language": request.form.get("language", "英语"),
@@ -44,6 +48,7 @@ def index():
 
 @bp.post("/export")
 @login_required
+@permission_required("hashtag.export")
 def export():
     try:
         payload = json.loads(request.form.get("payload") or "{}")

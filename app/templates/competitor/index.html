@@ -8,20 +8,26 @@
             <p>{{ tasks|length }} 个任务，{{ products|length }} 条产品记录</p>
         </div>
         <div class="toolbar">
+            {% if current_user.can("competitor.create_task") %}
             <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createCompetitorTaskModal">
                 <i class="bi bi-plus-lg"></i>
                 创建采集
             </button>
+            {% endif %}
+            {% if current_user.can("competitor.export") %}
             <form method="post" action="{{ url_for('competitor.export') }}">
                 <button type="submit" class="btn btn-outline-secondary">
                     <i class="bi bi-download"></i>
                     导出CSV
                 </button>
             </form>
+            {% endif %}
+            {% if current_user.can("competitor.manage_sites") %}
             <a class="btn btn-outline-primary" href="{{ url_for('competitor.sites') }}">
                 <i class="bi bi-list-ul"></i>
                 竞品站列表
             </a>
+            {% endif %}
         </div>
     </div>
 
@@ -59,14 +65,16 @@
                         {% endif %}
                     </td>
                     <td class="text-end">
-                        {% if task.collection_cycle != "instant" and task.status in ["active", "collecting"] %}
+                        {% if current_user.can("competitor.pause_task") and task.collection_cycle != "instant" and task.status in ["active", "collecting"] %}
                         <form method="post" action="{{ url_for('competitor.pause_task', task_id=task.id) }}" class="inline-form">
                             <button class="btn btn-sm btn-outline-warning" type="submit">暂停任务</button>
                         </form>
                         {% endif %}
+                        {% if current_user.can("competitor.delete_task") %}
                         <button class="btn btn-sm btn-outline-danger" type="button" data-bs-toggle="modal" data-bs-target="#deleteCompetitorTaskModal{{ task.id }}">
                             删除
                         </button>
+                        {% endif %}
                     </td>
                 </tr>
                 {% if task.last_error %}
@@ -124,7 +132,9 @@
                 <td>{{ product.fb_ad_count if product.fb_ad_count is not none else "-" }}</td>
                 <td>{{ product.collected_at.strftime("%Y-%m-%d %H:%M") }}</td>
                 <td class="text-end">
+                    {% if current_user.can("competitor.detail") %}
                     <button type="button" class="btn btn-sm btn-outline-primary competitor-product-action" data-detail-url="{{ url_for('competitor.product_detail', product_id=product.id) }}">详情</button>
+                    {% endif %}
                     {% if product.product_url %}
                     <a class="btn btn-sm btn-outline-secondary" href="{{ product.product_url }}" target="_blank" rel="noreferrer">跳转</a>
                     {% endif %}

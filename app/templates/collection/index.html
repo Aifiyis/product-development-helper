@@ -8,16 +8,20 @@
             <p>{{ tasks|length }} 个任务，{{ notes|length }} 条采集记录</p>
         </div>
         <div class="toolbar">
+            {% if current_user.can("platform_collection.create_task") %}
             <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createTaskModal">
                 <i class="bi bi-plus-lg"></i>
                 创建采集
             </button>
+            {% endif %}
+            {% if current_user.can("platform_collection.export") %}
             <form method="post" action="{{ url_for(endpoint + '.export') }}">
                 <button type="submit" class="btn btn-outline-secondary">
                     <i class="bi bi-download"></i>
                     导出CSV
                 </button>
             </form>
+            {% endif %}
         </div>
     </div>
 
@@ -55,9 +59,11 @@
                 <td>{{ note.publish_time.strftime("%Y-%m-%d %H:%M") if note.publish_time else "-" }}</td>
                 <td>{{ note.collection_time.strftime("%Y-%m-%d %H:%M") }}</td>
                 <td class="text-end">
+                    {% if current_user.can("platform_collection.detail") %}
                     <button type="button" class="btn btn-sm btn-outline-primary note-action" data-detail-url="{{ url_for(endpoint + '.note_detail', note_id=note.id) }}">
                         分析报告
                     </button>
+                    {% endif %}
                     {% if note.source_url %}
                     <a class="btn btn-sm btn-outline-secondary" href="{{ note.source_url }}" target="_blank" rel="noreferrer">跳转原文</a>
                     {% else %}
@@ -80,6 +86,8 @@
     </div>
 </section>
 
+{% if current_user.can("platform_collection.create_task") %}
 {% include "collection/create_modal.html" %}
+{% endif %}
 {% include "collection/detail_modal.html" %}
 {% endblock %}

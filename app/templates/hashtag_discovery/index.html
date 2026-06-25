@@ -26,10 +26,12 @@
                 {% endfor %}
             </select>
 
+            {% if current_user.can("hashtag.catch") %}
             <button type="submit" class="btn btn-primary trend-submit">
                 <i class="bi bi-graph-up-arrow"></i>
                 Catch
             </button>
+            {% endif %}
         </form>
     </aside>
 
@@ -48,6 +50,7 @@
                     <i class="bi bi-copy"></i>
                     CopyTags
                 </button>
+                {% if current_user.can("hashtag.export") %}
                 <form method="post" action="{{ url_for('hashtag_discovery.export') }}">
                     <input type="hidden" name="payload" value="{{ results|tojson|forceescape }}">
                     <button type="submit" class="btn btn-light btn-sm">
@@ -55,6 +58,7 @@
                         ExportCSV
                     </button>
                 </form>
+                {% endif %}
             </div>
         </div>
 

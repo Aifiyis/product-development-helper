@@ -3,7 +3,10 @@
 {% block content %}
 <section class="content-panel">
     <div class="panel-header">
-        <h2>用户列表</h2>
+        <div>
+            <h2>用户管理</h2>
+            <p>超级管理员拥有全部权限；管理员和员工可单独配置页面权限与功能权限。</p>
+        </div>
         <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createUserModal">
             <i class="bi bi-plus-lg"></i>
             新建用户
@@ -16,6 +19,7 @@
                 <th>用户名</th>
                 <th>角色</th>
                 <th>状态</th>
+                <th>权限数量</th>
                 <th>创建时间</th>
                 <th class="text-end">操作</th>
             </tr>
@@ -24,17 +28,22 @@
             {% for user in users %}
             <tr>
                 <td>{{ user.username }}</td>
-                <td>{{ "管理员" if user.role == "admin" else "只读用户" }}</td>
+                <td>{{ role_labels.get(user.normalized_role, user.role) }}</td>
                 <td>
                     <span class="badge text-bg-{{ 'success' if user.is_active else 'secondary' }}">
                         {{ "启用" if user.is_active else "停用" }}
                     </span>
                 </td>
+                <td>{{ "全部" if user.is_super_admin() else user.permission_list()|length }}</td>
                 <td>{{ user.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
                 <td class="text-end">
+                    {% if current_user.can_manage_user(user) %}
                     <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editUser{{ user.id }}">
                         <i class="bi bi-pencil-square"></i>
                     </button>
+                    {% else %}
+                    <span class="text-muted">无权限</span>
+                    {% endif %}
                 </td>
             </tr>
             {% endfor %}
@@ -44,7 +53,7 @@
 </section>
 
 <div class="modal fade" id="createUserModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <form method="post" class="modal-content">
             <input type="hidden" name="action" value="create">
             <div class="modal-header">
@@ -52,20 +61,27 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <div class="mb-3">
-                    <label class="form-label">用户名</label>
-                    <input class="form-control" name="username" required>
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label">用户名</label>
+                        <input class="form-control" name="username" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">密码</label>
+                        <input class="form-control" name="password" type="password" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">角色</label>
+                        <select class="form-select" name="role">
+                            {% for value, label in role_options %}
+                            <option value="{{ value }}">{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
                 </div>
-                <div class="mb-3">
-                    <label class="form-label">密码</label>
-                    <input class="form-control" name="password" type="password" required>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">角色</label>
-                    <select class="form-select" name="role">
-                        <option value="viewer">只读用户</option>
-                        <option value="admin">管理员</option>
-                    </select>
+                <div class="permission-grid mt-4">
+                    {% set default_permissions = default_role_permissions.get("employee", []) %}
+                    {% include "auth/_permission_fields.html" %}
                 </div>
             </div>
             <div class="modal-footer">
@@ -77,8 +93,9 @@
 </div>
 
 {% for user in users %}
+{% if current_user.can_manage_user(user) %}
 <div class="modal fade" id="editUser{{ user.id }}" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <form method="post" class="modal-content">
             <input type="hidden" name="user_id" value="{{ user.id }}">
             <div class="modal-header">
@@ -86,23 +103,30 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <div class="mb-3">
-                    <label class="form-label">角色</label>
-                    <select class="form-select" name="role">
-                        <option value="viewer" {% if user.role == "viewer" %}selected{% endif %}>只读用户</option>
-                        <option value="admin" {% if user.role == "admin" %}selected{% endif %}>管理员</option>
-                    </select>
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label">角色</label>
+                        <select class="form-select" name="role">
+                            {% for value, label in role_options %}
+                            <option value="{{ value }}" {% if user.normalized_role == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">状态</label>
+                        <select class="form-select" name="is_active">
+                            <option value="1" {% if user.is_active %}selected{% endif %}>启用</option>
+                            <option value="0" {% if not user.is_active %}selected{% endif %}>停用</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">重置密码</label>
+                        <input class="form-control" name="password" type="password" placeholder="留空则不修改">
+                    </div>
                 </div>
-                <div class="mb-3">
-                    <label class="form-label">状态</label>
-                    <select class="form-select" name="is_active">
-                        <option value="1" {% if user.is_active %}selected{% endif %}>启用</option>
-                        <option value="0" {% if not user.is_active %}selected{% endif %}>停用</option>
-                    </select>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">重置密码</label>
-                    <input class="form-control" name="password" type="password" placeholder="留空则不修改">
+                <div class="permission-grid mt-4">
+                    {% set default_permissions = user.permission_list() %}
+                    {% include "auth/_permission_fields.html" %}
                 </div>
             </div>
             <div class="modal-footer justify-content-between">
@@ -117,5 +141,6 @@
         </form>
     </div>
 </div>
+{% endif %}
 {% endfor %}
 {% endblock %}

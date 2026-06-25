@@ -4,33 +4,47 @@
         <span>Product Helper</span>
     </div>
     <nav class="nav flex-column sidebar-nav">
+        {% if current_user.can("dashboard.view") %}
         <a class="nav-link {% if request.path.startswith('/dashboard') %}active{% endif %}" href="{{ url_for('dashboard.index') }}">
             <i class="bi bi-speedometer2"></i>
             中控台
         </a>
+        {% endif %}
+        {% if current_user.can("users.manage") %}
         <a class="nav-link {% if request.path.startswith('/auth/users') %}active{% endif %}" href="{{ url_for('auth.users') }}">
             <i class="bi bi-people"></i>
             用户管理
         </a>
+        {% endif %}
+        {% if current_user.can("hashtag.view") %}
         <a class="nav-link {% if request.path.startswith('/hashtag-discovery') %}active{% endif %}" href="{{ url_for('hashtag_discovery.index') }}">
             <i class="bi bi-hash"></i>
             热门标签发现
         </a>
+        {% endif %}
+        {% if current_user.can("product_extension.view") %}
         <a class="nav-link {% if request.path.startswith('/product-extension') %}active{% endif %}" href="{{ url_for('product_extension.index') }}">
             <i class="bi bi-stars"></i>
             产品扩展
         </a>
+        {% endif %}
+        {% if current_user.can("trends.view") %}
         <a class="nav-link {% if request.path.startswith('/trends') %}active{% endif %}" href="{{ url_for('dashboard.trends') }}">
             <i class="bi bi-graph-up-arrow"></i>
             产品趋势库
         </a>
+        {% endif %}
+        {% if current_user.can("competitor.view") %}
         <a class="nav-link {% if request.path.startswith('/competitor') %}active{% endif %}" href="{{ url_for('competitor.index') }}">
             <i class="bi bi-bullseye"></i>
             竞品监控
         </a>
+        {% endif %}
+        {% if current_user.can("platform_collection.view") %}
         <a class="nav-link {% if request.path.startswith('/collection/platform') %}active{% endif %}" href="{{ url_for('xiaohongshu.index') }}">
             <i class="bi bi-journal-text"></i>
             平台采集
         </a>
+        {% endif %}
     </nav>
 </aside>

@@ -1,0 +1,19 @@
+{% for group in permission_groups %}
+<section class="permission-section">
+    <h3>{{ group.title }}</h3>
+    <div class="permission-options">
+        {% for permission, label in group["items"] %}
+        <label class="permission-option">
+            <input
+                class="form-check-input"
+                type="checkbox"
+                name="permissions"
+                value="{{ permission }}"
+                {% if permission in default_permissions %}checked{% endif %}
+            >
+            <span>{{ label }}</span>
+        </label>
+        {% endfor %}
+    </div>
+</section>
+{% endfor %}

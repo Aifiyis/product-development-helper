@@ -1,7 +1,8 @@
 from flask import Blueprint, render_template, url_for
-from flask_login import login_required
+from flask_login import current_user, login_required
 
 from app.models import CollectionTask, CollectedNote, CompetitorProduct, CompetitorTask, User
+from app.permissions import permission_required
 
 
 bp = Blueprint("dashboard", __name__)
@@ -9,6 +10,7 @@ bp = Blueprint("dashboard", __name__)
 
 @bp.get("/dashboard")
 @login_required
+@permission_required("dashboard.view")
 def index():
     modules = [
         {
@@ -17,6 +19,7 @@ def index():
             "tag": "创意拓展",
             "icon": "bi-card-image",
             "url": url_for("product_extension.index"),
+            "permission": "product_extension.view",
         },
         {
             "title": "热门标签发现",
@@ -24,6 +27,7 @@ def index():
             "tag": "趋势洞察",
             "icon": "bi-card-image",
             "url": url_for("hashtag_discovery.index"),
+            "permission": "hashtag.view",
         },
         {
             "title": "产品趋势库",
@@ -31,6 +35,7 @@ def index():
             "tag": "数据分析",
             "icon": "bi-card-image",
             "url": url_for("dashboard.trends"),
+            "permission": "trends.view",
         },
         {
             "title": "竞品监控",
@@ -38,6 +43,7 @@ def index():
             "tag": "监控",
             "icon": "bi-card-image",
             "url": url_for("competitor.index"),
+            "permission": "competitor.view",
         },
         {
             "title": "平台采集",
@@ -45,6 +51,7 @@ def index():
             "tag": "内容采集",
             "icon": "bi-card-image",
             "url": url_for("xiaohongshu.index"),
+            "permission": "platform_collection.view",
         },
         {
             "title": "分析报告",
@@ -52,8 +59,10 @@ def index():
             "tag": "报告",
             "icon": "bi-card-image",
             "url": url_for("dashboard.reports"),
+            "permission": "reports.view",
         },
     ]
+    modules = [module for module in modules if current_user.can(module["permission"])]
     stats = [
         {"label": "功能模块", "value": len(modules), "icon": "bi-grid-3x3-gap-fill", "tone": "primary"},
         {"label": "总任务数", "value": CollectionTask.query.count() + CompetitorTask.query.count(), "icon": "bi-clipboard2-check-fill", "tone": "success"},
@@ -65,10 +74,14 @@ def index():
 
 @bp.get("/trends")
 @login_required
+@permission_required("trends.view")
 def trends():
     return render_template("dashboard/placeholder.html", page_title="产品趋势库", title="产品趋势库")
 
+
 @bp.get("/reports")
 @login_required
+@permission_required("reports.view")
 def reports():
     return render_template("dashboard/placeholder.html", page_title="分析报告", title="分析报告")
+

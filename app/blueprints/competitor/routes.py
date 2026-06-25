@@ -5,6 +5,7 @@ from flask_login import current_user, login_required
 
 from app.extensions import db, scheduler
 from app.models import CompetitorProduct, CompetitorTask
+from app.permissions import permission_required
 from app.services.competitor_export_service import build_products_csv
 from app.services.competitor_service import add_discovered, load_competitors, list_by_type
 from app.services.scheduler_service import enqueue_competitor_task, register_competitor_job
@@ -24,6 +25,7 @@ PLATFORM_LABELS = {
 
 @bp.get("")
 @login_required
+@permission_required("competitor.view")
 def index():
     data = load_competitors()
     tasks = CompetitorTask.query.order_by(CompetitorTask.created_at.desc()).all()
@@ -41,6 +43,7 @@ def index():
 
 @bp.post("/tasks")
 @login_required
+@permission_required("competitor.create_task")
 def create_task():
     sites = request.form.getlist("target_sites")
     if not sites:
@@ -71,6 +74,7 @@ def create_task():
 
 @bp.post("/tasks/<int:task_id>/run")
 @login_required
+@permission_required("competitor.run_task")
 def run_task(task_id):
     task = CompetitorTask.query.get_or_404(task_id)
     if task.status in {"failed", "paused", "completed"}:
@@ -84,6 +88,7 @@ def run_task(task_id):
 
 @bp.get("/tasks/<int:task_id>/status")
 @login_required
+@permission_required("competitor.view")
 def task_status(task_id):
     task = CompetitorTask.query.get_or_404(task_id)
     return jsonify(
@@ -115,6 +120,7 @@ def serialize_task(task, categories):
 
 @bp.post("/tasks/<int:task_id>/pause")
 @login_required
+@permission_required("competitor.pause_task")
 def pause_task(task_id):
     task = CompetitorTask.query.get_or_404(task_id)
     if task.scheduler_job_id and scheduler.get_job(task.scheduler_job_id):
@@ -126,6 +132,7 @@ def pause_task(task_id):
 
 @bp.post("/tasks/<int:task_id>/delete")
 @login_required
+@permission_required("competitor.delete_task")
 def delete_task(task_id):
     task = CompetitorTask.query.get_or_404(task_id)
     if task.scheduler_job_id and scheduler.get_job(task.scheduler_job_id):
@@ -142,6 +149,7 @@ def delete_task(task_id):
 
 @bp.get("/products/<int:product_id>")
 @login_required
+@permission_required("competitor.detail")
 def product_detail(product_id):
     product = CompetitorProduct.query.get_or_404(product_id)
     return jsonify(
@@ -167,6 +175,7 @@ def product_detail(product_id):
 
 @bp.post("/export")
 @login_required
+@permission_required("competitor.export")
 def export():
     task_id = request.form.get("task_id") or None
     csv_file = build_products_csv(task_id=task_id)
@@ -175,6 +184,7 @@ def export():
 
 @bp.get("/sites")
 @login_required
+@permission_required("competitor.manage_sites")
 def sites():
     categories, grouped = list_by_type()
     return render_template(
@@ -188,6 +198,7 @@ def sites():
 
 @bp.post("/sites/track")
 @login_required
+@permission_required("competitor.discover_sites")
 def track_sites():
     keyword = request.form.get("keyword", "").strip()
     category = request.form.get("category", "comprehensive")

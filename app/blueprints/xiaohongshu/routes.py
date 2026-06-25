@@ -5,6 +5,7 @@ from flask_login import current_user, login_required
 
 from app.extensions import db
 from app.models import CollectionTask, CollectedNote
+from app.permissions import permission_required
 from app.services.export_service import build_notes_csv
 from app.services.scheduler_service import register_task_job
 
@@ -24,6 +25,7 @@ PLATFORM_CHOICES = [
 
 @bp.get("")
 @login_required
+@permission_required("platform_collection.view")
 def index():
     notes = CollectedNote.query.order_by(CollectedNote.collection_time.desc()).all()
     tasks = (
@@ -44,6 +46,7 @@ def index():
 
 @bp.post("/tasks")
 @login_required
+@permission_required("platform_collection.create_task")
 def create_task():
     selected_platforms = [
         value for value in request.form.getlist("collection_platforms")
@@ -70,6 +73,7 @@ def create_task():
 
 @bp.get("/notes/<int:note_id>")
 @login_required
+@permission_required("platform_collection.detail")
 def note_detail(note_id):
     note = CollectedNote.query.get_or_404(note_id)
     return jsonify(
@@ -92,6 +96,7 @@ def note_detail(note_id):
 
 @bp.post("/export")
 @login_required
+@permission_required("platform_collection.export")
 def export():
     csv_file = build_notes_csv(PLATFORM)
     return send_file(

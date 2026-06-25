@@ -1,6 +1,7 @@
-from flask import Blueprint, current_app, jsonify, render_template, request
-from flask_login import login_required
+from flask import Blueprint, abort, current_app, jsonify, render_template, request
+from flask_login import current_user, login_required
 
+from app.permissions import permission_required
 from app.services.image_generation_service import ImageGenerationError, generate_ad_image
 from app.services.product_extension_service import ASPECT_RATIOS, generate_product_concepts
 
@@ -10,7 +11,10 @@ bp = Blueprint("product_extension", __name__, url_prefix="/product-extension")
 
 @bp.route("", methods=["GET", "POST"])
 @login_required
+@permission_required("product_extension.view")
 def index():
+    if request.method == "POST" and not current_user.can("product_extension.generate"):
+        abort(403)
     form = {
         "product_name": request.form.get("product_name", "旅行保温杯"),
         "audience": request.form.get("audience", "通勤人群"),
@@ -36,6 +40,7 @@ def index():
 
 @bp.post("/generate-image")
 @login_required
+@permission_required("product_extension.generate_image")
 def generate_image():
     payload = request.get_json(silent=True) or {}
     prompt = (payload.get("prompt") or "").strip()

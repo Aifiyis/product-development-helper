@@ -1098,9 +1098,44 @@ body {
         flex-direction: column;
     }
 
-    .toolbar,
-    .toolbar .btn,
-    .toolbar form {
-        width: 100%;
+.toolbar,
+.toolbar .btn,
+.toolbar form {
+    width: 100%;
+}
+}
+
+.permission-grid {
+    display: grid;
+    gap: 16px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.permission-section {
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 14px;
+}
+
+.permission-section h3 {
+    font-size: 15px;
+    margin: 0 0 12px;
+}
+
+.permission-options {
+    display: grid;
+    gap: 8px;
+}
+
+.permission-option {
+    align-items: center;
+    display: flex;
+    gap: 8px;
+    line-height: 1.4;
+}
+
+@media (max-width: 760px) {
+    .permission-grid {
+        grid-template-columns: 1fr;
     }
 }

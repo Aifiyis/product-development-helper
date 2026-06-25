@@ -7,6 +7,7 @@ from werkzeug.security import generate_password_hash
 from app.config import DevelopmentConfig
 from app.extensions import db, login_manager, scheduler
 from app.models import CollectionTask, CompetitorProduct, CompetitorTask, User
+from app.permissions import ROLE_ADMIN, ROLE_SUPER_ADMIN
 from app.services.scheduler_service import restore_active_jobs
 
 
@@ -77,12 +78,18 @@ def register_shell_context(app):
 
 
 def ensure_default_admin():
-    if User.query.filter_by(username="admin").first():
+    if User.query.filter_by(role=ROLE_SUPER_ADMIN).first():
+        return
+    existing = User.query.filter_by(username="admin").first()
+    if existing:
+        if existing.role == ROLE_ADMIN:
+            existing.role = ROLE_SUPER_ADMIN
+            db.session.commit()
         return
     admin = User(
         username="admin",
         password_hash=generate_password_hash("admin123"),
-        role="admin",
+        role=ROLE_SUPER_ADMIN,
         is_active=True,
     )
     db.session.add(admin)
@@ -90,6 +97,10 @@ def ensure_default_admin():
 
 
 def ensure_schema_columns():
+    user_columns = {column["name"] for column in inspect(db.engine).get_columns("users")}
+    if "permissions" not in user_columns:
+        db.session.execute(text("ALTER TABLE users ADD COLUMN permissions TEXT"))
+        db.session.commit()
     columns = {column["name"] for column in inspect(db.engine).get_columns("collection_tasks")}
     if "collection_platforms" not in columns:
         db.session.execute(text("ALTER TABLE collection_tasks ADD COLUMN collection_platforms TEXT"))
