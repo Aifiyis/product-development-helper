@@ -94,3 +94,23 @@ def ensure_schema_columns():
     if "collection_platforms" not in columns:
         db.session.execute(text("ALTER TABLE collection_tasks ADD COLUMN collection_platforms TEXT"))
         db.session.commit()
+    competitor_columns = {column["name"] for column in inspect(db.engine).get_columns("competitor_tasks")}
+    if "product_keywords" not in competitor_columns:
+        db.session.execute(text("ALTER TABLE competitor_tasks ADD COLUMN product_keywords TEXT"))
+        db.session.commit()
+    if "sort_mode" not in competitor_columns:
+        db.session.execute(text("ALTER TABLE competitor_tasks ADD COLUMN sort_mode TEXT"))
+        db.session.commit()
+    if "last_error" not in competitor_columns:
+        db.session.execute(text("ALTER TABLE competitor_tasks ADD COLUMN last_error TEXT"))
+        db.session.commit()
+    if "last_run_summary" not in competitor_columns:
+        db.session.execute(text("ALTER TABLE competitor_tasks ADD COLUMN last_run_summary TEXT"))
+        db.session.commit()
+    product_columns = {column["name"] for column in inspect(db.engine).get_columns("competitor_products")}
+    if "product_created_at" not in product_columns:
+        db.session.execute(text("ALTER TABLE competitor_products ADD COLUMN product_created_at DATETIME"))
+        db.session.commit()
+    if "product_tags" not in product_columns:
+        db.session.execute(text("ALTER TABLE competitor_products ADD COLUMN product_tags TEXT"))
+        db.session.commit()

@@ -18,7 +18,7 @@ def save_competitors(data):
         json.dump(data, file, ensure_ascii=False, indent=2)
 
 
-def add_discovered(domain, category, description, scrape_reason):
+def add_discovered(domain, category, description, scrape_reason, platform="unknown"):
     data = load_competitors()
     normalized = normalize_domain(domain)
     if not normalized:
@@ -31,7 +31,7 @@ def add_discovered(domain, category, description, scrape_reason):
             "domain": normalized,
             "type": "vertical" if category and category != "comprehensive" else "comprehensive",
             "category": category or "comprehensive",
-            "platform": "shopify",
+            "platform": platform or "unknown",
             "description": description or "趋势发现新增竞品",
             "scrape_reason": scrape_reason or "由趋势跟踪候选生成",
             "source": "discovered",

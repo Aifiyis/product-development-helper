@@ -14,14 +14,22 @@ class ScraperBase:
     def _create_fetcher(self):
         try:
             from scrapling.fetchers import StealthyFetcher
+            return StealthyFetcher
         except Exception:
-            return None
-        return StealthyFetcher
+            try:
+                from scrapling.fetchers import Fetcher
+                return Fetcher
+            except Exception:
+                return None
 
     def fetch(self, url, **kwargs):
         if self.fetcher is None:
             raise ScraperUnavailable("Scrapling is not installed or could not be imported.")
-        return self.fetcher.fetch(url, **kwargs)
+        if hasattr(self.fetcher, "fetch"):
+            return self.fetcher.fetch(url, **kwargs)
+        if hasattr(self.fetcher, "get"):
+            return self.fetcher.get(url, **kwargs)
+        raise ScraperUnavailable("Scrapling fetcher does not expose a supported fetch method.")
 
     def normalize_note(self, task, keyword, raw, platform=None):
         return {

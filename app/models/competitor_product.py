@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 
 from app.extensions import db
@@ -12,6 +13,8 @@ class CompetitorProduct(db.Model):
     source_type = db.Column(db.String(40), nullable=False, default="shopify_json")
     title = db.Column(db.String(500), nullable=True)
     price = db.Column(db.String(80), nullable=True)
+    product_created_at = db.Column(db.DateTime, nullable=True)
+    product_tags = db.Column(db.Text, nullable=True)
     product_media = db.Column(db.Text, nullable=True)
     reviews_count = db.Column(db.Integer, nullable=False, default=0)
     variants = db.Column(db.Text, nullable=True)
@@ -22,3 +25,14 @@ class CompetitorProduct(db.Model):
     collected_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
 
     task = db.relationship("CompetitorTask", back_populates="products")
+
+    @property
+    def main_image(self):
+        try:
+            media = json.loads(self.product_media or "{}")
+        except json.JSONDecodeError:
+            return ""
+        if media.get("main"):
+            return media["main"]
+        carousel = media.get("carousel") or []
+        return carousel[0] if carousel else ""

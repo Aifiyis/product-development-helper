@@ -247,6 +247,79 @@ body {
     margin: 0;
 }
 
+.task-manager {
+    margin-bottom: 22px;
+    padding: 16px;
+    border: 1px solid #e8edf4;
+    border-radius: 8px;
+    background: #fbfcfe;
+}
+
+.task-manager-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.task-manager-header h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 750;
+}
+
+.inline-form {
+    display: inline-block;
+    margin: 0 0 0 6px;
+}
+
+.task-sites {
+    max-width: 360px;
+    overflow-wrap: anywhere;
+}
+
+.task-error-toggle {
+    padding: 0;
+    font-size: 12px;
+    text-decoration: none;
+}
+
+.task-error-row pre {
+    margin: 0;
+    padding: 12px;
+    border: 1px solid #ffd8d8;
+    border-radius: 6px;
+    background: #fff6f6;
+    color: #a32222;
+    white-space: pre-wrap;
+}
+
+.task-loading-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    display: grid;
+    place-items: center;
+    background: rgba(244, 246, 249, 0.72);
+    backdrop-filter: blur(2px);
+}
+
+.task-loading-overlay[hidden] {
+    display: none;
+}
+
+.task-loading-box {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 190px;
+    padding: 18px 22px;
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: 0 16px 40px rgba(31, 39, 51, 0.16);
+}
+
 .task-pill small,
 .muted-text {
     color: var(--text-muted);
@@ -261,6 +334,22 @@ body {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.product-thumb {
+    display: block;
+    width: 58px;
+    height: 58px;
+    border: 1px solid #e1e7f0;
+    border-radius: 6px;
+    background: #f8fafc;
+    object-fit: cover;
+}
+
+.product-thumb-empty {
+    display: grid;
+    place-items: center;
+    color: var(--text-muted);
 }
 
 .table-empty {
@@ -380,8 +469,49 @@ body {
     color: var(--text-muted);
 }
 
+.competitor-media-thumbs {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+}
+
+.media-thumb {
+    flex: 0 0 auto;
+    width: 58px;
+    height: 58px;
+    padding: 0;
+    overflow: hidden;
+    border: 2px solid transparent;
+    border-radius: 6px;
+    background: #f8fafc;
+}
+
+.media-thumb.active {
+    border-color: #2f80ed;
+}
+
+.media-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
 .competitor-detail-grid {
     grid-template-columns: repeat(2, 1fr);
+}
+
+.detail-tag {
+    display: inline-flex;
+    align-items: center;
+    margin: 0 6px 6px 0;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: #edf6ff;
+    color: #2f80ed;
+    font-size: 12px;
+    font-weight: 700;
 }
 
 .login-page {

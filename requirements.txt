@@ -2,6 +2,10 @@ flask>=3.0
 flask-sqlalchemy>=3.1
 flask-login>=0.6
 flask-apscheduler>=1.13
-scrapling @ git+https://github.com/D4Vinci/Scrapling.git
+scrapling>=0.4.8
+curl_cffi>=0.7
+playwright>=1.40
+browserforge>=1.2
+patchright>=1.49
 python-dotenv>=1.0
 werkzeug>=3.0

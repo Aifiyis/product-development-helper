@@ -28,8 +28,8 @@ def discover_competitors(keyword, category, config):
 def discover_with_gemini(keyword, category, api_key, model):
     prompt = (
         "Return strict JSON array only. Generate 5 likely DTC competitor domains for "
-        f"keyword={keyword}, category={category}. Each item must include domain, description, scrape_reason. "
-        "Prefer Shopify-like personalized gift competitors. Do not include protocol."
+        f"keyword={keyword}, category={category}. Each item must include domain, platform, description, scrape_reason. "
+        "Platform must be one of shopify, shopline, shoplazza, custom, unknown. Do not include protocol."
     )
     endpoint = (
         f"https://generativelanguage.googleapis.com/v1beta/models/{model or 'gemini-2.5-flash'}"
@@ -55,6 +55,7 @@ def fallback_candidates(keyword, category):
         [
             {
                 "domain": f"{slug}studio.com",
+                "platform": "unknown",
                 "description": f"{keyword or '定制礼品'}相关趋势候选站",
                 "scrape_reason": "本地兜底生成，用于补齐跟踪趋势流程验证",
             }
@@ -73,6 +74,7 @@ def normalize_candidates(items, keyword, category):
         normalized.append(
             {
                 "domain": domain,
+                "platform": item.get("platform") if item.get("platform") in {"shopify", "shopline", "shoplazza", "custom", "unknown"} else "unknown",
                 "description": item.get("description") or f"{keyword} 相关竞品",
                 "scrape_reason": item.get("scrape_reason") or f"由 {category} 趋势跟踪生成",
             }

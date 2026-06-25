@@ -14,7 +14,7 @@
   },
   "competitors": [
     {"domain": "godmerch.com", "type": "comprehensive", "category": "comprehensive", "platform": "shopify", "description": "综合定制礼品站", "scrape_reason": "品类广、上新快，作综合趋势基准", "source": "seed", "selected": false},
-    {"domain": "megacustom.com", "type": "comprehensive", "category": "comprehensive", "platform": "shopify", "description": "大型综合个性化商品站", "scrape_reason": "覆盖家居、服饰和礼赠，适合观察跨品类爆款", "source": "seed", "selected": false},
+    {"domain": "megacustom.com", "type": "comprehensive", "category": "comprehensive", "platform": "shopline", "description": "大型综合个性化商品站", "scrape_reason": "覆盖家居、服饰和礼赠，适合观察跨品类爆款", "source": "seed", "selected": false},
     {"domain": "customygifts.com", "type": "comprehensive", "category": "comprehensive", "platform": "shopify", "description": "综合定制礼品站", "scrape_reason": "常见广告投放素材丰富，可作价格和选品参考", "source": "seed", "selected": false},
     {"domain": "onlycustomize.com", "type": "comprehensive", "category": "comprehensive", "platform": "shopify", "description": "个性化礼物综合站", "scrape_reason": "产品线宽，可观察节日礼品节奏", "source": "seed", "selected": false},
     {"domain": "mytopcustom.com", "type": "comprehensive", "category": "comprehensive", "platform": "shopify", "description": "综合定制商品站", "scrape_reason": "适合作为上新和广告角度对照", "source": "seed", "selected": false},

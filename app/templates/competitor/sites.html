@@ -25,6 +25,7 @@
                 <tr>
                     <th style="width: 42px;"></th>
                     <th>网址</th>
+                    <th>平台</th>
                     <th>简短介绍</th>
                     <th>被抓取原因</th>
                     <th>来源</th>
@@ -39,6 +40,7 @@
                         {% endif %}
                     </td>
                     <td><a href="https://{{ site.domain }}" target="_blank" rel="noreferrer">{{ site.domain }}</a></td>
+                    <td><span class="badge text-bg-light">{{ platform_labels.get(site.platform, site.platform or "未知") }}</span></td>
                     <td>{{ site.description }}</td>
                     <td>{{ site.scrape_reason }}</td>
                     <td><span class="badge text-bg-{{ 'info' if site.source == 'discovered' else 'secondary' }}">{{ site.source }}</span></td>

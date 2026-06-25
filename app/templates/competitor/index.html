@@ -25,27 +25,81 @@
         </div>
     </div>
 
-    <div class="task-strip">
-        {% for task in tasks[:8] %}
-        <div class="task-pill">
-            <span>{{ task.target_category or "全部品类" }}</span>
-            <small>{{ task.site_list|length }} 站 · {{ task.products_per_site }} 条/站 · {{ task.collection_cycle }}</small>
-            <form method="post" action="{{ url_for('competitor.run_task', task_id=task.id) }}">
-                <button class="btn btn-sm btn-outline-primary" type="submit">立即运行</button>
-            </form>
+    <section class="task-manager">
+        <div class="task-manager-header">
+            <h3>采集任务管理</h3>
         </div>
-        {% else %}
-        <span class="muted-text">暂无竞品采集任务</span>
-        {% endfor %}
-    </div>
+        <div class="table-responsive">
+            <table class="table align-middle">
+                <thead>
+                <tr>
+                    <th>网站类别</th>
+                    <th>目标网站</th>
+                    <th>产品关键词</th>
+                    <th>采集条件</th>
+                    <th>周期</th>
+                    <th>状态</th>
+                    <th class="text-end">操作</th>
+                </tr>
+                </thead>
+                <tbody data-competitor-task-body>
+                {% for task in tasks %}
+                <tr data-task-row="{{ task.id }}">
+                    <td>{{ categories.get(task.target_category, task.target_category) if task.target_category else "不限" }}</td>
+                    <td class="task-sites">{{ task.site_list|join(", ") }}</td>
+                    <td>{{ task.product_keywords or "-" }}</td>
+                    <td>{{ task.products_per_site }} 条/站 · {{ "最新上架" if task.sort_mode == "newest" else "销量排名" }}</td>
+                    <td>{{ "即时" if task.collection_cycle == "instant" else task.collection_cycle }}</td>
+                    <td>
+                        <span class="badge text-bg-{{ task.status_badge }}" data-task-status="{{ task.id }}">{{ task.status_label }}</span>
+                        {% if task.last_error %}
+                        <button class="btn btn-link btn-sm task-error-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#taskError{{ task.id }}">
+                            查看错误
+                        </button>
+                        {% endif %}
+                    </td>
+                    <td class="text-end">
+                        {% if task.collection_cycle != "instant" and task.status in ["active", "collecting"] %}
+                        <form method="post" action="{{ url_for('competitor.pause_task', task_id=task.id) }}" class="inline-form">
+                            <button class="btn btn-sm btn-outline-warning" type="submit">暂停任务</button>
+                        </form>
+                        {% endif %}
+                        <button class="btn btn-sm btn-outline-danger" type="button" data-bs-toggle="modal" data-bs-target="#deleteCompetitorTaskModal{{ task.id }}">
+                            删除
+                        </button>
+                    </td>
+                </tr>
+                {% if task.last_error %}
+                <tr class="collapse task-error-row" id="taskError{{ task.id }}">
+                    <td colspan="7">
+                        <pre>{{ task.last_error }}</pre>
+                    </td>
+                </tr>
+                {% endif %}
+                {% else %}
+                <tr data-task-empty>
+                    <td colspan="7">
+                        <div class="table-empty">
+                            <i class="bi bi-list-task"></i>
+                            暂无竞品采集任务
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
 
     <div class="table-responsive">
         <table class="table table-hover align-middle collection-table">
             <thead>
             <tr>
+                <th>产品图</th>
                 <th>采集来源</th>
                 <th>标题</th>
                 <th>价格</th>
+                <th>产品创建时间</th>
                 <th>评论数</th>
                 <th>广告量</th>
                 <th>采集时间</th>
@@ -55,9 +109,17 @@
             <tbody>
             {% for product in products %}
             <tr class="competitor-product-row" data-detail-url="{{ url_for('competitor.product_detail', product_id=product.id) }}">
+                <td>
+                    {% if product.main_image %}
+                    <img class="product-thumb" src="{{ product.main_image }}" alt="{{ product.title or '产品图' }}">
+                    {% else %}
+                    <div class="product-thumb product-thumb-empty"><i class="bi bi-image"></i></div>
+                    {% endif %}
+                </td>
                 <td>{{ product.source_domain }}</td>
                 <td class="title-cell">{{ product.title or "未命名产品" }}</td>
                 <td>{{ product.price or "-" }}</td>
+                <td>{{ product.product_created_at.strftime("%Y-%m-%d %H:%M") if product.product_created_at else "-" }}</td>
                 <td>{{ product.reviews_count }}</td>
                 <td>{{ product.fb_ad_count if product.fb_ad_count is not none else "-" }}</td>
                 <td>{{ product.collected_at.strftime("%Y-%m-%d %H:%M") }}</td>
@@ -70,7 +132,7 @@
             </tr>
             {% else %}
             <tr>
-                <td colspan="7">
+                <td colspan="9">
                     <div class="table-empty">
                         <i class="bi bi-inbox"></i>
                         暂无竞品产品记录
@@ -82,6 +144,59 @@
         </table>
     </div>
 </section>
+
+{% for task in tasks %}
+<div class="modal fade" id="deleteCompetitorTaskModal{{ task.id }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <form method="post" action="{{ url_for('competitor.delete_task', task_id=task.id) }}" class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">删除采集任务</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-3">请选择删除范围。仅删除任务会保留已采集产品数据；删除任务及采集数据会同时清理该任务下的产品记录。</p>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="delete_mode" id="deleteTaskOnly{{ task.id }}" value="task_only" checked>
+                    <label class="form-check-label" for="deleteTaskOnly{{ task.id }}">仅删除任务</label>
+                </div>
+                <div class="form-check mt-2">
+                    <input class="form-check-input" type="radio" name="delete_mode" id="deleteTaskWithData{{ task.id }}" value="task_with_data">
+                    <label class="form-check-label" for="deleteTaskWithData{{ task.id }}">删除该任务及采集数据</label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">取消</button>
+                <button type="submit" class="btn btn-danger">确认删除</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endfor %}
+
+<div class="task-loading-overlay" data-competitor-loading hidden>
+    <div class="task-loading-box">
+        <span class="spinner-border text-primary" role="status" aria-hidden="true"></span>
+        <strong data-competitor-loading-text>后台采集中</strong>
+    </div>
+</div>
+
+<div class="modal fade" id="competitorTaskNoticeModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">采集任务已完成</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" data-competitor-task-notice>
+                采集已完成，请手动刷新页面更新数据。
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">稍后刷新</button>
+                <button type="button" class="btn btn-primary" onclick="window.location.reload()">刷新页面</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 {% include "competitor/create_modal.html" %}
 {% include "competitor/detail_modal.html" %}
