@@ -33,7 +33,7 @@
         {% if error %}
             <section class="empty-state">
                 <i class="bi bi-exclamation-circle"></i>
-                <h2>页面不存在</h2>
+                <h2>{{ page_title or "请求出错" }}</h2>
             </section>
         {% endif %}
         {% block content %}{% endblock %}

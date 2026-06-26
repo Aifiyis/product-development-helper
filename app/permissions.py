@@ -73,6 +73,7 @@ ALL_PERMISSIONS = [permission for group in PERMISSION_GROUPS for permission, _ i
 
 DEFAULT_ROLE_PERMISSIONS = {
     ROLE_ADMIN: [
+        "dashboard.view",
         "users.manage",
         "hashtag.view",
         "hashtag.catch",

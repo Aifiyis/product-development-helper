@@ -4,14 +4,14 @@ from flask import Flask, redirect, render_template, url_for
 from sqlalchemy import inspect, text
 from werkzeug.security import generate_password_hash
 
-from app.config import DevelopmentConfig
+from app.config import ProductionConfig
 from app.extensions import db, login_manager, scheduler
 from app.models import CollectionTask, CompetitorProduct, CompetitorTask, User
 from app.permissions import ROLE_ADMIN, ROLE_SUPER_ADMIN
 from app.services.scheduler_service import restore_active_jobs
 
 
-def create_app(config_object=DevelopmentConfig):
+def create_app(config_object=ProductionConfig):
     app = Flask(__name__, instance_relative_config=True)
     app.config.from_object(config_object)
     Path(app.instance_path).mkdir(parents=True, exist_ok=True)
@@ -63,6 +63,10 @@ def register_error_handlers(app):
     @app.errorhandler(404)
     def not_found(error):
         return render_template("base.html", page_title="页面不存在", error=error), 404
+
+    @app.errorhandler(403)
+    def forbidden(error):
+        return render_template("base.html", page_title="没有权限", error=error), 403
 
 
 def register_shell_context(app):
