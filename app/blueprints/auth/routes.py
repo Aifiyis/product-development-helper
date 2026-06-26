@@ -59,19 +59,25 @@ def users():
             delete_user()
         return redirect(url_for("auth.users"))
 
-    query = User.query
-    if current_user.normalized_role == ROLE_ADMIN:
-        query = query.filter_by(role=ROLE_EMPLOYEE)
-    users_list = query.order_by(User.created_at.desc()).all()
+    users_list = scoped_users_query().order_by(User.created_at.desc()).all()
+    admin_users = User.query.filter_by(role=ROLE_ADMIN, is_active=True).order_by(User.username).all()
     return render_template(
         "auth/users.html",
         page_title="用户管理",
         users=users_list,
+        admin_users=admin_users,
         permission_groups=PERMISSION_GROUPS,
         role_labels=ROLE_LABELS,
         role_options=allowed_role_options(),
         default_role_permissions=DEFAULT_ROLE_PERMISSIONS,
     )
+
+
+def scoped_users_query():
+    query = User.query
+    if current_user.normalized_role == ROLE_ADMIN:
+        query = query.filter(User.role == ROLE_EMPLOYEE, User.parent_id == current_user.id)
+    return query
 
 
 def create_user():
@@ -94,9 +100,8 @@ def create_user():
         role=role,
         is_active=True,
     )
-    if role != ROLE_SUPER_ADMIN:
-        selected_permissions = request.form.getlist("permissions") or DEFAULT_ROLE_PERMISSIONS.get(role, [])
-        user.set_permissions(selected_permissions)
+    apply_parent(user)
+    apply_permissions(user, request.form.getlist("permissions"))
     db.session.add(user)
     db.session.commit()
     flash("用户已创建。", "success")
@@ -113,10 +118,8 @@ def update_user():
         role = user.normalized_role
     user.role = role
     user.is_active = request.form.get("is_active") == "1"
-    if role == ROLE_SUPER_ADMIN:
-        user.permissions = None
-    else:
-        user.set_permissions(request.form.getlist("permissions"))
+    apply_parent(user)
+    apply_permissions(user, request.form.getlist("permissions"))
 
     password = request.form.get("password", "")
     if password:
@@ -136,6 +139,31 @@ def delete_user():
     db.session.delete(user)
     db.session.commit()
     flash("用户已删除。", "success")
+
+
+def apply_parent(user):
+    if user.normalized_role != ROLE_EMPLOYEE:
+        user.parent_id = None
+        return
+    if current_user.normalized_role == ROLE_ADMIN:
+        user.parent_id = current_user.id
+        return
+    parent_id = request.form.get("parent_id") or None
+    if parent_id:
+        parent = User.query.get(int(parent_id))
+        user.parent_id = parent.id if parent and parent.normalized_role == ROLE_ADMIN else None
+    else:
+        user.parent_id = None
+
+
+def apply_permissions(user, selected_permissions):
+    if user.normalized_role == ROLE_SUPER_ADMIN:
+        user.permissions = None
+        return
+    permissions = selected_permissions or DEFAULT_ROLE_PERMISSIONS.get(user.normalized_role, [])
+    if user.normalized_role == ROLE_ADMIN:
+        permissions = [permission for permission in permissions if permission != "dashboard.view"]
+    user.set_permissions(permissions)
 
 
 def allowed_role_values():

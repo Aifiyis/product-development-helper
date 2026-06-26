@@ -5,7 +5,7 @@
     <div class="panel-header">
         <div>
             <h2>用户管理</h2>
-            <p>超级管理员拥有全部权限；管理员和员工可单独配置页面权限与功能权限。</p>
+            <p>超级管理员可创建管理员和员工；管理员只能创建和管理自己的下属员工。</p>
         </div>
         <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createUserModal">
             <i class="bi bi-plus-lg"></i>
@@ -18,6 +18,7 @@
             <tr>
                 <th>用户名</th>
                 <th>角色</th>
+                <th>上级管理员</th>
                 <th>状态</th>
                 <th>权限数量</th>
                 <th>创建时间</th>
@@ -29,6 +30,7 @@
             <tr>
                 <td>{{ user.username }}</td>
                 <td>{{ role_labels.get(user.normalized_role, user.role) }}</td>
+                <td>{{ user.manager.username if user.manager else "-" }}</td>
                 <td>
                     <span class="badge text-bg-{{ 'success' if user.is_active else 'secondary' }}">
                         {{ "启用" if user.is_active else "停用" }}
@@ -62,15 +64,15 @@
             </div>
             <div class="modal-body">
                 <div class="row g-3">
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <label class="form-label">用户名</label>
                         <input class="form-control" name="username" required>
                     </div>
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <label class="form-label">密码</label>
                         <input class="form-control" name="password" type="password" required>
                     </div>
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <label class="form-label">角色</label>
                         <select class="form-select" name="role">
                             {% for value, label in role_options %}
@@ -78,6 +80,17 @@
                             {% endfor %}
                         </select>
                     </div>
+                    {% if current_user.is_super_admin() %}
+                    <div class="col-md-3">
+                        <label class="form-label">员工上级管理员</label>
+                        <select class="form-select" name="parent_id">
+                            <option value="">不指定</option>
+                            {% for admin in admin_users %}
+                            <option value="{{ admin.id }}">{{ admin.username }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    {% endif %}
                 </div>
                 <div class="permission-grid mt-4">
                     {% set default_permissions = default_role_permissions.get("employee", []) %}
@@ -104,7 +117,7 @@
             </div>
             <div class="modal-body">
                 <div class="row g-3">
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <label class="form-label">角色</label>
                         <select class="form-select" name="role">
                             {% for value, label in role_options %}
@@ -112,14 +125,25 @@
                             {% endfor %}
                         </select>
                     </div>
-                    <div class="col-md-4">
+                    {% if current_user.is_super_admin() %}
+                    <div class="col-md-3">
+                        <label class="form-label">员工上级管理员</label>
+                        <select class="form-select" name="parent_id">
+                            <option value="">不指定</option>
+                            {% for admin in admin_users %}
+                            <option value="{{ admin.id }}" {% if user.parent_id == admin.id %}selected{% endif %}>{{ admin.username }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    {% endif %}
+                    <div class="col-md-3">
                         <label class="form-label">状态</label>
                         <select class="form-select" name="is_active">
                             <option value="1" {% if user.is_active %}selected{% endif %}>启用</option>
                             <option value="0" {% if not user.is_active %}selected{% endif %}>停用</option>
                         </select>
                     </div>
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <label class="form-label">重置密码</label>
                         <input class="form-control" name="password" type="password" placeholder="留空则不修改">
                     </div>

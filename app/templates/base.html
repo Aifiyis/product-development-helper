@@ -17,14 +17,6 @@
             <div>
                 <h1>{{ page_title or "中控台" }}</h1>
             </div>
-            {% if request.endpoint == "dashboard.index" %}
-                <form method="post" action="{{ url_for('auth.logout') }}">
-                    <button type="submit" class="btn btn-light btn-sm">
-                        <i class="bi bi-box-arrow-right"></i>
-                        退出
-                    </button>
-                </form>
-            {% endif %}
         </div>
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}

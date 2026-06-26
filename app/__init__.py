@@ -101,6 +101,9 @@ def ensure_schema_columns():
     if "permissions" not in user_columns:
         db.session.execute(text("ALTER TABLE users ADD COLUMN permissions TEXT"))
         db.session.commit()
+    if "parent_id" not in user_columns:
+        db.session.execute(text("ALTER TABLE users ADD COLUMN parent_id INTEGER"))
+        db.session.commit()
     columns = {column["name"] for column in inspect(db.engine).get_columns("collection_tasks")}
     if "collection_platforms" not in columns:
         db.session.execute(text("ALTER TABLE collection_tasks ADD COLUMN collection_platforms TEXT"))

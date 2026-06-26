@@ -15,10 +15,13 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String(255), nullable=False)
     role = db.Column(db.String(20), nullable=False, default=ROLE_EMPLOYEE)
     permissions = db.Column(db.Text, nullable=True)
+    parent_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
     tasks = db.relationship("CollectionTask", back_populates="creator", lazy=True)
+    manager = db.relationship("User", remote_side=[id], back_populates="employees")
+    employees = db.relationship("User", back_populates="manager", lazy=True)
 
     def is_admin(self):
         return self.normalized_role in {ROLE_SUPER_ADMIN, ROLE_ADMIN}
@@ -53,7 +56,7 @@ class User(UserMixin, db.Model):
         if self.is_super_admin():
             return True
         if self.normalized_role == ROLE_ADMIN:
-            return target.normalized_role == ROLE_EMPLOYEE
+            return target.normalized_role == ROLE_EMPLOYEE and target.parent_id == self.id
         return False
 
 

@@ -47,4 +47,19 @@
         </a>
         {% endif %}
     </nav>
+    <div class="sidebar-user">
+        <div class="sidebar-user-avatar">
+            <i class="bi bi-person-circle"></i>
+        </div>
+        <div class="sidebar-user-meta">
+            <strong>{{ current_user.username }}</strong>
+            <span>{{ current_user.normalized_role }}</span>
+        </div>
+        <form method="post" action="{{ url_for('auth.logout') }}">
+            <button type="submit" class="btn btn-outline-light btn-sm w-100">
+                <i class="bi bi-box-arrow-right"></i>
+                退出登录
+            </button>
+        </form>
+    </div>
 </aside>
