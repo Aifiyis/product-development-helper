@@ -1183,3 +1183,16 @@ body {
         grid-template-columns: 1fr;
     }
 }
+.table-sort-link {
+    align-items: center;
+    color: inherit;
+    display: inline-flex;
+    gap: 0.35rem;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.table-sort-link:hover,
+.table-sort-link.active {
+    color: var(--bs-primary);
+}

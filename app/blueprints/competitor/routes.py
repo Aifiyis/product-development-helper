@@ -22,6 +22,30 @@ PLATFORM_LABELS = {
     "unknown": "未知",
 }
 
+PRODUCT_SORT_COLUMNS = {
+    "product_created_at": CompetitorProduct.product_created_at,
+    "reviews_count": CompetitorProduct.reviews_count,
+    "fb_ad_count": CompetitorProduct.fb_ad_count,
+}
+
+
+def resolve_product_sort(sort_field, sort_direction):
+    selected_field = sort_field if sort_field in PRODUCT_SORT_COLUMNS else None
+    selected_direction = sort_direction if sort_direction in {"asc", "desc"} else "desc"
+    if selected_field is None:
+        return (
+            CompetitorProduct.collected_at.desc(),
+            CompetitorProduct.id.desc(),
+        ), None, "desc"
+
+    column = PRODUCT_SORT_COLUMNS[selected_field]
+    primary_order = column.asc().nullslast() if selected_direction == "asc" else column.desc().nullslast()
+    return (
+        primary_order,
+        CompetitorProduct.collected_at.desc(),
+        CompetitorProduct.id.desc(),
+    ), selected_field, selected_direction
+
 
 @bp.get("")
 @login_required
@@ -29,7 +53,11 @@ PLATFORM_LABELS = {
 def index():
     data = load_competitors()
     tasks = CompetitorTask.query.order_by(CompetitorTask.created_at.desc()).all()
-    products = CompetitorProduct.query.order_by(CompetitorProduct.collected_at.desc()).limit(200).all()
+    product_ordering, product_sort, product_sort_direction = resolve_product_sort(
+        request.args.get("sort"),
+        request.args.get("direction"),
+    )
+    products = CompetitorProduct.query.order_by(*product_ordering).limit(200).all()
     return render_template(
         "competitor/index.html",
         page_title="竞品监控",
@@ -38,6 +66,8 @@ def index():
         platform_labels=PLATFORM_LABELS,
         tasks=tasks,
         products=products,
+        product_sort=product_sort,
+        product_sort_direction=product_sort_direction,
     )
 
 

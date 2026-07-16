@@ -76,6 +76,7 @@
     {"domain": "myhawaiianshirts.com", "type": "vertical", "category": "apparel", "platform": "shopify", "description": "夏威夷衫定制站", "scrape_reason": "季节服饰定制场景明显", "source": "seed", "selected": false},
     {"domain": "customyfashion.com", "type": "vertical", "category": "apparel", "platform": "shopify", "description": "定制服饰站", "scrape_reason": "服装变体和图案可作监控对象", "source": "seed", "selected": false},
     {"domain": "forstylish.com", "type": "vertical", "category": "apparel", "platform": "shopify", "description": "时尚定制礼品站", "scrape_reason": "风格化服饰和礼品方向", "source": "seed", "selected": false},
+    {"domain": "foryourcustom.com", "type": "vertical", "category": "apparel", "platform": "shoplazza", "description": "定制服饰和刺绣礼品站", "scrape_reason": "Shoplazza 服饰定制站，适合监控刺绣 T 恤、卫衣和礼品类上新", "source": "seed", "selected": false},
     {"domain": "gearhumans.com", "type": "vertical", "category": "apparel", "platform": "shopify", "description": "定制服饰和兴趣图案站", "scrape_reason": "图案和服饰结合，适合主题监控", "source": "seed", "selected": false},
     {"domain": "myspotifyplaque.com", "type": "vertical", "category": "music", "platform": "shopify", "description": "Spotify 音乐牌定制站", "scrape_reason": "音乐铭牌代表品类，适合礼品场景监控", "source": "seed", "selected": false},
     {"domain": "songfinch.com", "type": "vertical", "category": "music", "platform": "unknown", "description": "定制歌曲服务站", "scrape_reason": "音乐礼品不同形态，适合场景拓展参考", "source": "seed", "selected": false},

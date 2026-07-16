@@ -107,9 +107,21 @@
                 <th>采集来源</th>
                 <th>标题</th>
                 <th>价格</th>
-                <th>产品创建时间</th>
-                <th>评论数</th>
-                <th>广告量</th>
+                {% for field, label in [("product_created_at", "产品创建时间"), ("reviews_count", "评论数"), ("fb_ad_count", "广告量")] %}
+                {% set is_active_sort = product_sort == field %}
+                {% set next_direction = "asc" if is_active_sort and product_sort_direction == "desc" else "desc" %}
+                <th>
+                    <a class="table-sort-link{% if is_active_sort %} active{% endif %}"
+                       href="{{ url_for('competitor.index', sort=field, direction=next_direction) }}">
+                        {{ label }}
+                        {% if is_active_sort %}
+                        <i class="bi bi-sort-{{ 'up' if product_sort_direction == 'asc' else 'down' }}" aria-hidden="true"></i>
+                        {% else %}
+                        <i class="bi bi-arrow-down-up" aria-hidden="true"></i>
+                        {% endif %}
+                    </a>
+                </th>
+                {% endfor %}
                 <th>采集时间</th>
                 <th class="text-end">操作</th>
             </tr>
