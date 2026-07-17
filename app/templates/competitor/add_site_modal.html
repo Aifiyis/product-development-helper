@@ -1,0 +1,46 @@
+<div class="modal fade" id="addCompetitorSiteModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <form method="post" action="{{ url_for('competitor.add_site') }}" class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">手动添加站点</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label" for="competitorDomain">网站网址</label>
+                    <input class="form-control" id="competitorDomain" name="domain" placeholder="例如 example.com 或 https://example.com" required>
+                </div>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label" for="competitorCategory">网站类别</label>
+                        <select class="form-select" id="competitorCategory" name="category">
+                            {% for key, label in categories.items() %}
+                            <option value="{{ key }}">{{ label.replace("垂直", "") }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="competitorPlatform">平台</label>
+                        <select class="form-select" id="competitorPlatform" name="platform">
+                            {% for key, label in platform_labels.items() %}
+                            <option value="{{ key }}">{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <label class="form-label" for="competitorDescription">简短介绍</label>
+                    <input class="form-control" id="competitorDescription" name="description" placeholder="例如：定制礼品独立站">
+                </div>
+                <div class="mt-3">
+                    <label class="form-label" for="competitorReason">采集原因</label>
+                    <input class="form-control" id="competitorReason" name="scrape_reason" placeholder="例如：关注其选品、素材和定价">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">取消</button>
+                <button type="submit" class="btn btn-primary">添加站点</button>
+            </div>
+        </form>
+    </div>
+</div>

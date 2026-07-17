@@ -1196,3 +1196,130 @@ body {
 .table-sort-link.active {
     color: var(--bs-primary);
 }
+
+/* Product inbox and multi-store publishing workflow */
+.workflow-steps {
+    align-items: center;
+    background: #fff;
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin-bottom: 18px;
+    overflow: hidden;
+    padding: 10px;
+}
+.workflow-steps > * {
+    align-items: center;
+    color: #7b8494;
+    display: flex;
+    gap: 9px;
+    justify-content: center;
+    padding: 8px 12px;
+    position: relative;
+    text-decoration: none;
+}
+.workflow-steps > *:not(:last-child)::after {
+    background: #e5e9f0;
+    content: "";
+    height: 1px;
+    position: absolute;
+    right: -20%;
+    top: 50%;
+    width: 40%;
+}
+.workflow-steps span span,
+.workflow-steps a span,
+.workflow-steps b {
+    align-items: center;
+    background: #eef2f7;
+    border-radius: 50%;
+    display: inline-flex;
+    font-size: 12px;
+    height: 28px;
+    justify-content: center;
+    width: 28px;
+}
+.workflow-steps .active { color: #1565c0; font-weight: 700; }
+.workflow-steps .active span,
+.workflow-steps .active b { background: #1565c0; color: #fff; }
+.workflow-filter {
+    align-items: end;
+    background: #f8fafc;
+    border: 1px solid #e8ecf2;
+    border-radius: 10px;
+    display: grid;
+    gap: 14px;
+    grid-template-columns: repeat(4, minmax(150px, 1fr)) auto;
+    margin-bottom: 16px;
+    padding: 16px;
+}
+.workflow-filter-action { display: flex; gap: 8px; }
+.workflow-tabs { border-bottom: 1px solid #e6eaf0; display: flex; gap: 28px; margin-bottom: 8px; }
+.workflow-tabs a { color: #667085; padding: 12px 4px; text-decoration: none; }
+.workflow-tabs a.active { border-bottom: 2px solid #2f80ed; color: #2f80ed; font-weight: 700; }
+.workflow-tabs a span { background: #eef2f7; border-radius: 10px; font-size: 12px; padding: 2px 7px; }
+.workflow-table .title-cell { max-width: 380px; min-width: 220px; }
+.workflow-actions { white-space: nowrap; }
+.workflow-actions form { display: inline-block; }
+.workflow-error { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.store-choice-group { border: 1px solid #e4e8ee; border-radius: 8px; margin-bottom: 14px; overflow: hidden; }
+.store-choice-group h6 { background: #f6f8fb; margin: 0; padding: 10px 14px; }
+.store-choice-grid { display: grid; gap: 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 12px; }
+.store-choice { align-items: center; border: 1px solid #e4e8ee; border-radius: 8px; cursor: pointer; display: flex; gap: 10px; padding: 10px; }
+.store-choice:has(input:checked) { background: #eff6ff; border-color: #2f80ed; }
+.store-choice span, .store-choice small { display: block; }
+.editor-action-bar {
+    align-items: center;
+    background: rgba(255, 255, 255, .96);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    padding: 12px 16px;
+    position: sticky;
+    top: 10px;
+    z-index: 20;
+}
+.editor-action-bar > div { align-items: center; display: flex; gap: 8px; }
+.editor-card { background: #fff; border: 1px solid var(--panel-border); border-radius: 12px; margin-bottom: 16px; overflow: hidden; }
+.editor-card-header { align-items: center; border-bottom: 1px solid #e9edf3; display: flex; justify-content: space-between; padding: 15px 18px; }
+.editor-card-header h3 { font-size: 17px; margin: 0; }
+.editor-card-header span { color: var(--text-muted); font-size: 13px; }
+.editor-card-body { padding: 18px; }
+.editor-fields { display: grid; gap: 16px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.editor-field-wide { grid-column: 1 / -1; }
+.product-image-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.product-image-card, .product-image-upload { border: 1px solid #dfe4eb; border-radius: 9px; overflow: hidden; }
+.product-image-card img { aspect-ratio: 1; object-fit: cover; width: 100%; }
+.product-image-meta { display: grid; gap: 7px; padding: 9px; }
+.product-image-meta label { align-items: center; display: flex; gap: 6px; }
+.product-image-upload { align-items: center; color: #2f80ed; cursor: pointer; display: flex; flex-direction: column; gap: 8px; justify-content: center; min-height: 190px; }
+.product-image-upload i { font-size: 28px; }
+.product-image-upload input { display: none; }
+.option-editor-row { display: grid; gap: 10px; grid-template-columns: minmax(160px, .35fr) minmax(240px, 1fr) auto; margin-bottom: 10px; }
+.variant-editor-table { min-width: 1180px; }
+.variant-editor-table th { background: #f7f9fc; font-size: 13px; white-space: nowrap; }
+.variant-editor-table td { min-width: 120px; }
+.variant-image-cell { min-width: 110px !important; }
+.variant-image-cell img, .variant-image-empty { align-items: center; background: #f1f3f6; border-radius: 6px; display: flex; height: 54px; justify-content: center; margin-bottom: 6px; object-fit: cover; width: 54px; }
+.dimension-fields { display: grid; gap: 5px; grid-template-columns: repeat(3, 72px); }
+.rich-editor-toolbar { background: #f7f9fc; border: 1px solid #dfe4eb; border-bottom: 0; display: flex; gap: 4px; padding: 7px; }
+.rich-editor-toolbar button { background: #fff; border: 1px solid #dfe4eb; border-radius: 4px; height: 32px; min-width: 34px; }
+.rich-editor { border: 1px solid #dfe4eb; min-height: 300px; overflow: auto; padding: 16px; }
+.rich-editor img { height: auto; max-width: 100%; }
+@media (max-width: 1100px) {
+    .workflow-filter { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .workflow-filter-action { grid-column: 1 / -1; }
+}
+@media (max-width: 760px) {
+    .workflow-steps { grid-template-columns: repeat(2, 1fr); }
+    .workflow-steps > *::after { display: none; }
+    .workflow-filter, .editor-fields, .store-choice-grid { grid-template-columns: 1fr; }
+    .editor-action-bar { align-items: flex-start; flex-direction: column; gap: 10px; }
+    .editor-action-bar .toolbar { display: grid; grid-template-columns: repeat(3, 1fr); }
+    .option-editor-row { grid-template-columns: 1fr auto; }
+    .option-editor-row [data-option-values] { grid-column: 1 / -1; grid-row: 2; }
+}
+.workflow-error-detail { margin: 0; max-height: 360px; overflow: auto; white-space: pre-wrap; word-break: break-word; }

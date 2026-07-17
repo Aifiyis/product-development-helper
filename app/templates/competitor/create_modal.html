@@ -7,6 +7,18 @@
             </div>
             <div class="modal-body">
                 <div class="mb-3">
+                    <label class="form-label d-block">采集来源</label>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="collection_mode" id="competitorSitesMode" value="competitor_sites" checked data-competitor-collection-mode>
+                        <label class="form-check-label" for="competitorSitesMode">竞品站采集</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="collection_mode" id="productLinksMode" value="product_links" data-competitor-collection-mode>
+                        <label class="form-check-label" for="productLinksMode">链接采集</label>
+                    </div>
+                </div>
+                <div data-competitor-sites-fields>
+                <div class="mb-3">
                     <label class="form-label">选择网站类别</label>
                     <select class="form-select" name="target_category" data-site-category-filter>
                         <option value="">不限</option>
@@ -24,22 +36,33 @@
                         {% endfor %}
                     </select>
                 </div>
+                </div>
+                <div class="mb-3" data-competitor-links-fields hidden>
+                    <label class="form-label" for="productUrls">产品网址</label>
+                    <textarea class="form-control" id="productUrls" name="product_urls" rows="8" placeholder="请填写产品的网址，多个网址用Enter换行" disabled></textarea>
+                </div>
+                <div data-competitor-site-options>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">每站采集数量</label>
+                            <input class="form-control" name="products_per_site" type="number" min="1" max="250" value="20">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">采集条件</label>
+                            <select class="form-select" name="sort_mode">
+                                <option value="best_selling" selected>按销量排名</option>
+                                <option value="newest">按最新上架时间</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row g-3 mt-0">
+                        <div class="col-md-6">
+                            <label class="form-label">产品关键词</label>
+                            <input class="form-control" name="product_keywords" placeholder="逗号分隔，例如 necklace, pet memorial">
+                        </div>
+                    </div>
+                </div>
                 <div class="row g-3">
-                    <div class="col-md-6">
-                        <label class="form-label">每站采集数量</label>
-                        <input class="form-control" name="products_per_site" type="number" min="1" max="250" value="20">
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">采集条件</label>
-                        <select class="form-select" name="sort_mode">
-                            <option value="best_selling" selected>按销量排名</option>
-                            <option value="newest">按最新上架时间</option>
-                        </select>
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">产品关键词</label>
-                        <input class="form-control" name="product_keywords" placeholder="逗号分隔，例如 necklace, pet memorial">
-                    </div>
                     <div class="col-md-6">
                         <label class="form-label">定时间隔</label>
                         <select class="form-select" name="collection_cycle" data-competitor-cycle>

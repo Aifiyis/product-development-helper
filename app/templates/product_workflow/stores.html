@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="workflow-steps" aria-label="产品工作流">
+    <a href="{{ url_for('competitor.index') }}"><span>1</span>产品抓取</a>
+    <a href="{{ url_for('product_workflow.inbox') }}"><span>2</span>产品认领</a>
+    <span><b>3</b>编辑商品</span>
+    <span class="active"><b>4</b>店铺发布</span>
+</section>
+
+<section class="content-panel">
+    <div class="panel-header">
+        <div><h2>店铺管理</h2><p>逐店保存加密凭据；平台接口已预留后续 OAuth 接入。</p></div>
+        <div class="toolbar">
+            <a class="btn btn-light" href="{{ url_for('product_workflow.inbox') }}">返回认领箱</a>
+            {% if current_user.can("stores.manage") %}
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addStoreModal"><i class="bi bi-plus-lg"></i> 添加店铺</button>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table align-middle workflow-table">
+            <thead><tr><th>店铺</th><th>平台</th><th>域名</th><th>币种</th><th>连接状态</th><th>启用</th><th>最后测试</th><th class="text-end">操作</th></tr></thead>
+            <tbody>
+            {% for store in stores %}
+            <tr>
+                <td><strong>{{ store.name }}</strong></td>
+                <td>{{ store.platform_label }}</td>
+                <td>{{ store.shop_domain }}</td>
+                <td>{{ store.currency or "-" }}</td>
+                <td>
+                    <span class="badge text-bg-{{ store.status_badge }}">{{ store.status_label }}</span>
+                    {% if store.last_error %}<small class="d-block text-danger workflow-error" title="{{ store.last_error }}">{{ store.last_error }}</small>{% endif %}
+                </td>
+                <td>{{ "是" if store.is_active else "否" }}</td>
+                <td>{{ store.last_tested_at.strftime("%Y-%m-%d %H:%M") if store.last_tested_at else "-" }}</td>
+                <td class="text-end workflow-actions">
+                    {% if current_user.can("stores.manage") %}
+                    <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editStoreModal{{ store.id }}">编辑</button>
+                    <form method="post" action="{{ url_for('product_workflow.test_store', store_id=store.id) }}"><button class="btn btn-sm btn-outline-success">测试连接</button></form>
+                    <form method="post" action="{{ url_for('product_workflow.toggle_store', store_id=store.id) }}"><button class="btn btn-sm btn-outline-secondary">{{ "停用" if store.is_active else "启用" }}</button></form>
+                    {% endif %}
+                </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="8"><div class="table-empty"><i class="bi bi-shop"></i>尚未配置店铺</div></td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+{% if current_user.can("stores.manage") %}
+<div class="modal fade" id="addStoreModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form method="post" action="{{ url_for('product_workflow.create_store') }}" class="modal-content" data-store-form>
+            <div class="modal-header"><h5 class="modal-title">添加店铺</h5><button class="btn-close" type="button" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <label class="form-label">平台</label>
+                <select class="form-select mb-3" name="platform" data-store-platform required>
+                    <option value="shopify">Shopify</option>
+                    <option value="shoplazza">Shoplazza</option>
+                </select>
+                <label class="form-label">店铺名称</label>
+                <input class="form-control mb-3" name="name" required>
+                <label class="form-label">店铺域名</label>
+                <input class="form-control mb-3" name="shop_domain" placeholder="example.myshopify.com" required data-store-domain>
+                <div data-shopify-credentials>
+                    <label class="form-label">Client ID</label><input class="form-control mb-3" name="client_id" autocomplete="off">
+                    <p class="small text-muted">Dev Dashboard 应用需授权 read_products、write_products、read_locations、read_inventory、write_inventory，并先安装到该店铺。</p>
+                    <label class="form-label">Client Secret</label><input class="form-control mb-3" type="password" name="client_secret" autocomplete="new-password">
+                </div>
+                <div data-shoplazza-credentials hidden>
+                    <label class="form-label">Access Token</label><input class="form-control" type="password" name="access_token" autocomplete="new-password">
+                </div>
+                    <p class="small text-muted">私有应用需授权 read_shop、read_product、write_product。</p>
+                <div class="alert alert-light mt-3 mb-0 small">凭据只会加密保存在服务端，页面不会再次显示。</div>
+            </div>
+            <div class="modal-footer"><button class="btn btn-light" type="button" data-bs-dismiss="modal">取消</button><button class="btn btn-primary">保存店铺</button></div>
+        </form>
+    </div>
+</div>
+
+{% for store in stores %}
+<div class="modal fade" id="editStoreModal{{ store.id }}" tabindex="-1">
+    <div class="modal-dialog">
+        <form method="post" action="{{ url_for('product_workflow.edit_store', store_id=store.id) }}" class="modal-content" data-store-form data-fixed-platform="{{ store.platform }}">
+            <div class="modal-header"><h5 class="modal-title">编辑 {{ store.name }}</h5><button class="btn-close" type="button" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <input type="hidden" name="platform" value="{{ store.platform }}" data-store-platform>
+                <label class="form-label">店铺名称</label><input class="form-control mb-3" name="name" value="{{ store.name }}" required>
+                <label class="form-label">店铺域名</label><input class="form-control mb-3" name="shop_domain" value="{{ store.shop_domain }}" required data-store-domain>
+                <label class="form-label">默认库存地点 ID</label><input class="form-control mb-3" name="default_location_id" value="{{ store.default_location_id or '' }}">
+                <div data-shopify-credentials {% if store.platform != "shopify" %}hidden{% endif %}>
+                    <p class="small text-muted">不填写表示保留现有凭据。</p>
+                    <label class="form-label">新 Client ID</label><input class="form-control mb-3" name="client_id" autocomplete="off" placeholder="••••••••（已加密保存）">
+                    <label class="form-label">新 Client Secret</label><input class="form-control mb-3" type="password" name="client_secret" autocomplete="new-password" placeholder="••••••••（已加密保存）">
+                </div>
+                <div data-shoplazza-credentials {% if store.platform != "shoplazza" %}hidden{% endif %}>
+                    <p class="small text-muted">不填写表示保留现有凭据。</p>
+                    <label class="form-label">新 Access Token</label><input class="form-control" type="password" name="access_token" autocomplete="new-password" placeholder="••••••••（已加密保存）">
+                </div>
+            </div>
+            <div class="modal-footer"><button class="btn btn-light" type="button" data-bs-dismiss="modal">取消</button><button class="btn btn-primary">保存修改</button></div>
+        </form>
+    </div>
+</div>
+{% endfor %}
+{% endif %}
+{% endblock %}

@@ -1,10 +1,16 @@
 {% extends "base.html" %}
 
 {% block content %}
+<section class="workflow-steps" aria-label="产品工作流">
+    <a class="active" href="{{ url_for('competitor.index') }}"><span>1</span>产品抓取</a>
+    <a href="{{ url_for('product_workflow.inbox') }}"><span>2</span>产品认领</a>
+    <span><b>3</b>编辑商品</span>
+    <span><b>4</b>店铺发布</span>
+</section>
 <section class="content-panel">
     <div class="panel-header">
         <div>
-            <h2>竞品监控</h2>
+            <h2>产品抓取</h2>
             <p>{{ tasks|length }} 个任务，{{ products|length }} 条产品记录</p>
         </div>
         <div class="toolbar">
@@ -27,6 +33,14 @@
                 <i class="bi bi-list-ul"></i>
                 竞品站列表
             </a>
+            {% endif %}
+            {% if current_user.can("product_inbox.move") %}
+            <form id="moveToInboxForm" method="post" action="{{ url_for('product_workflow.move_to_inbox') }}">
+                <button class="btn btn-warning" type="submit" data-move-selected disabled><i class="bi bi-inboxes"></i> 移入产品认领箱</button>
+            </form>
+            {% endif %}
+            {% if current_user.can("product_inbox.view") %}
+            <a class="btn btn-outline-warning" href="{{ url_for('product_workflow.inbox') }}">产品认领箱</a>
             {% endif %}
         </div>
     </div>
@@ -51,10 +65,10 @@
                 <tbody data-competitor-task-body>
                 {% for task in tasks %}
                 <tr data-task-row="{{ task.id }}">
-                    <td>{{ categories.get(task.target_category, task.target_category) if task.target_category else "不限" }}</td>
-                    <td class="task-sites">{{ task.site_list|join(", ") }}</td>
-                    <td>{{ task.product_keywords or "-" }}</td>
-                    <td>{{ task.products_per_site }} 条/站 · {{ "最新上架" if task.sort_mode == "newest" else "销量排名" }}</td>
+                    <td>{{ "链接采集" if task.is_product_link_collection else (categories.get(task.target_category, task.target_category) if task.target_category else "不限") }}</td>
+                    <td class="task-sites">{{ (task.product_url_list if task.is_product_link_collection else task.site_list)|join(", ") }}</td>
+                    <td>{{ "-" if task.is_product_link_collection else (task.product_keywords or "-") }}</td>
+                    <td>{{ "逐链接采集 · " ~ task.product_url_list|length ~ " 条" if task.is_product_link_collection else task.products_per_site ~ " 条/站 · " ~ ("最新上架" if task.sort_mode == "newest" else "销量排名") }}</td>
                     <td>{{ "即时" if task.collection_cycle == "instant" else task.collection_cycle }}</td>
                     <td>
                         <span class="badge text-bg-{{ task.status_badge }}" data-task-status="{{ task.id }}">{{ task.status_label }}</span>
@@ -103,6 +117,9 @@
         <table class="table table-hover align-middle collection-table">
             <thead>
             <tr>
+                {% if current_user.can("product_inbox.move") %}
+                <th><input class="form-check-input" type="checkbox" data-select-products aria-label="选择全部可移入产品"></th>
+                {% endif %}
                 <th>产品图</th>
                 <th>采集来源</th>
                 <th>标题</th>
@@ -129,6 +146,9 @@
             <tbody>
             {% for product in products %}
             <tr class="competitor-product-row" data-detail-url="{{ url_for('competitor.product_detail', product_id=product.id) }}">
+                {% if current_user.can("product_inbox.move") %}
+                <td><input class="form-check-input" type="checkbox" name="product_ids" value="{{ product.id }}" form="moveToInboxForm" data-product-select aria-label="选择 {{ product.title or '产品' }}" {% if product.id in inbox_product_ids %}disabled{% endif %}></td>
+                {% endif %}
                 <td>
                     {% if product.main_image %}
                     <img class="product-thumb" src="{{ product.main_image }}" alt="{{ product.title or '产品图' }}">
@@ -144,6 +164,14 @@
                 <td>{{ product.fb_ad_count if product.fb_ad_count is not none else "-" }}</td>
                 <td>{{ product.collected_at.strftime("%Y-%m-%d %H:%M") }}</td>
                 <td class="text-end">
+                    {% if product.id in inbox_product_ids %}
+                    <span class="badge text-bg-success">已移入认领箱</span>
+                    {% elif current_user.can("product_inbox.move") %}
+                    <form class="inline-form" method="post" action="{{ url_for('product_workflow.move_to_inbox') }}">
+                        <input type="hidden" name="product_id" value="{{ product.id }}">
+                        <button class="btn btn-sm btn-outline-warning" type="submit">移入认领箱</button>
+                    </form>
+                    {% endif %}
                     {% if current_user.can("competitor.detail") %}
                     <button type="button" class="btn btn-sm btn-outline-primary competitor-product-action" data-detail-url="{{ url_for('competitor.product_detail', product_id=product.id) }}">详情</button>
                     {% endif %}
@@ -154,10 +182,10 @@
             </tr>
             {% else %}
             <tr>
-                <td colspan="9">
+                <td colspan="{{ 10 if current_user.can('product_inbox.move') else 9 }}">
                     <div class="table-empty">
                         <i class="bi bi-inbox"></i>
-                        暂无竞品产品记录
+                        暂无产品抓取记录
                     </div>
                 </td>
             </tr>

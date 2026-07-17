@@ -38,7 +38,7 @@ def index():
             "permission": "trends.view",
         },
         {
-            "title": "竞品监控",
+            "title": "产品抓取",
             "description": "跟踪竞品内容声量与互动变化",
             "tag": "监控",
             "icon": "bi-card-image",

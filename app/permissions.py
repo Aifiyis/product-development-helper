@@ -27,7 +27,9 @@ PERMISSION_GROUPS = [
             ("hashtag.view", "热门标签发现"),
             ("product_extension.view", "产品扩展"),
             ("trends.view", "产品趋势库"),
-            ("competitor.view", "竞品监控"),
+            ("competitor.view", "产品抓取"),
+            ("product_inbox.view", "产品认领箱"),
+            ("stores.view", "店铺管理"),
             ("platform_collection.view", "平台采集"),
             ("reports.view", "分析报告"),
         ],
@@ -40,7 +42,7 @@ PERMISSION_GROUPS = [
         ],
     },
     {
-        "title": "竞品监控",
+        "title": "产品抓取",
         "items": [
             ("competitor.create_task", "创建采集任务"),
             ("competitor.run_task", "运行采集任务"),
@@ -50,6 +52,17 @@ PERMISSION_GROUPS = [
             ("competitor.detail", "查看产品详情"),
             ("competitor.manage_sites", "管理竞品网站"),
             ("competitor.discover_sites", "AI 发现竞品网站"),
+        ],
+    },
+    {
+        "title": "产品认领与发布",
+        "items": [
+            ("product_inbox.move", "移入产品认领箱"),
+            ("product_inbox.claim", "认领产品"),
+            ("product_inbox.edit", "编辑店铺商品"),
+            ("product_inbox.create_draft", "创建店铺草稿"),
+            ("product_inbox.publish", "发布商品"),
+            ("stores.manage", "管理店铺连接"),
         ],
     },
     {
@@ -92,6 +105,14 @@ DEFAULT_ROLE_PERMISSIONS = {
         "competitor.manage_sites",
         "competitor.discover_sites",
         "platform_collection.view",
+        "product_inbox.view",
+        "product_inbox.move",
+        "product_inbox.claim",
+        "product_inbox.edit",
+        "product_inbox.create_draft",
+        "product_inbox.publish",
+        "stores.view",
+        "stores.manage",
         "platform_collection.create_task",
         "platform_collection.detail",
         "platform_collection.export",
@@ -105,6 +126,8 @@ DEFAULT_ROLE_PERMISSIONS = {
         "competitor.view",
         "competitor.detail",
         "competitor.export",
+        "product_inbox.view",
+        "stores.view",
     ],
 }
 
@@ -116,6 +139,7 @@ PAGE_PERMISSIONS = {
     "trends": "trends.view",
     "competitor": "competitor.view",
     "platform_collection": "platform_collection.view",
+    "product_workflow": "product_inbox.view",
     "reports": "reports.view",
 }
 

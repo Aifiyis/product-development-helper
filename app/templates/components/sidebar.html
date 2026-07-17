@@ -37,7 +37,19 @@
         {% if current_user.can("competitor.view") %}
         <a class="nav-link {% if request.path.startswith('/competitor') %}active{% endif %}" href="{{ url_for('competitor.index') }}">
             <i class="bi bi-bullseye"></i>
-            竞品监控
+            产品抓取
+        </a>
+        {% endif %}
+        {% if current_user.can("product_inbox.view") %}
+        <a class="nav-link {% if request.path.startswith('/product-workflow/inbox') or request.path.startswith('/product-workflow/drafts') %}active{% endif %}" href="{{ url_for('product_workflow.inbox') }}">
+            <i class="bi bi-inboxes"></i>
+            产品认领箱
+        </a>
+        {% endif %}
+        {% if current_user.can("stores.view") %}
+        <a class="nav-link {% if request.path.startswith('/product-workflow/stores') %}active{% endif %}" href="{{ url_for('product_workflow.stores') }}">
+            <i class="bi bi-shop"></i>
+            店铺管理
         </a>
         {% endif %}
         {% if current_user.can("platform_collection.view") %}

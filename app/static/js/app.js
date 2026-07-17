@@ -175,7 +175,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         document.querySelectorAll(".competitor-product-row").forEach((row) => {
             row.addEventListener("click", (event) => {
-                if (event.target.closest("a, button")) {
+                if (event.target.closest("a, button, input, label, form")) {
                     return;
                 }
                 openCompetitorDetail(row.dataset.detailUrl);
@@ -220,6 +220,44 @@ document.addEventListener("DOMContentLoaded", () => {
         if (categoryFilter) {
             categoryFilter.addEventListener("change", renderSiteOptions);
         }
+    });
+
+    document.querySelectorAll("[data-competitor-task-form]").forEach((form) => {
+        const siteFields = form.querySelector("[data-competitor-sites-fields]");
+        const linkFields = form.querySelector("[data-competitor-links-fields]");
+        const siteOptions = form.querySelector("[data-competitor-site-options]");
+        const siteSelect = form.querySelector("[data-site-select]");
+        const categorySelect = form.querySelector("[data-site-category-filter]");
+        const siteSearch = form.querySelector("[data-site-search]");
+        const linkTextarea = form.querySelector("[name='product_urls']");
+
+        function syncCollectionMode() {
+            const isLinkCollection = form.querySelector("[data-competitor-collection-mode]:checked")?.value === "product_links";
+            if (siteFields) siteFields.hidden = isLinkCollection;
+            if (siteOptions) siteOptions.hidden = isLinkCollection;
+            if (linkFields) linkFields.hidden = !isLinkCollection;
+            if (siteSelect) {
+                siteSelect.disabled = isLinkCollection;
+                siteSelect.required = !isLinkCollection;
+            }
+            if (categorySelect) categorySelect.disabled = isLinkCollection;
+            if (siteSearch) siteSearch.disabled = isLinkCollection;
+            if (linkTextarea) {
+                linkTextarea.disabled = !isLinkCollection;
+                linkTextarea.required = isLinkCollection;
+            }
+            if (siteOptions) {
+                siteOptions.querySelectorAll("input, select").forEach((field) => {
+                    field.disabled = isLinkCollection;
+                });
+            }
+        }
+
+        form.querySelectorAll("[data-competitor-collection-mode]").forEach((radio) => {
+            radio.addEventListener("change", syncCollectionMode);
+        });
+        form.addEventListener("reset", () => window.setTimeout(syncCollectionMode, 0));
+        syncCollectionMode();
     });
 
     function showCompetitorTaskNotice(message) {
@@ -414,5 +452,192 @@ document.addEventListener("DOMContentLoaded", () => {
 
     document.querySelectorAll(".note-action").forEach((button) => {
         button.addEventListener("click", () => openDetail(button.dataset.detailUrl));
+    });
+});
+
+document.addEventListener("DOMContentLoaded", () => {
+    const selectAllProducts = document.querySelector("[data-select-products]");
+    const productCheckboxes = Array.from(document.querySelectorAll("[data-product-select]:not(:disabled)"));
+    const moveSelectedButton = document.querySelector("[data-move-selected]");
+    const updateBulkMoveState = () => {
+        const selectedCount = productCheckboxes.filter((item) => item.checked).length;
+        if (moveSelectedButton) moveSelectedButton.disabled = selectedCount === 0;
+        if (selectAllProducts) {
+            selectAllProducts.checked = productCheckboxes.length > 0 && selectedCount === productCheckboxes.length;
+            selectAllProducts.indeterminate = selectedCount > 0 && selectedCount < productCheckboxes.length;
+        }
+    };
+    selectAllProducts?.addEventListener("change", () => {
+        productCheckboxes.forEach((item) => { item.checked = selectAllProducts.checked; });
+        updateBulkMoveState();
+    });
+    productCheckboxes.forEach((item) => item.addEventListener("change", updateBulkMoveState));
+    updateBulkMoveState();
+
+    document.querySelectorAll("[data-store-search]").forEach((input) => {
+        input.addEventListener("input", () => {
+            const keyword = input.value.trim().toLowerCase();
+            input.closest(".modal")?.querySelectorAll("[data-store-name]").forEach((item) => {
+                item.hidden = keyword !== "" && !item.dataset.storeName.includes(keyword);
+            });
+        });
+    });
+
+    document.querySelectorAll("[data-store-form]").forEach((form) => {
+        const platformField = form.querySelector("[data-store-platform]");
+        const shopify = form.querySelector("[data-shopify-credentials]");
+        const shoplazza = form.querySelector("[data-shoplazza-credentials]");
+        const domain = form.querySelector("[data-store-domain]");
+        const updatePlatformFields = () => {
+            const platform = form.dataset.fixedPlatform || platformField?.value || "shopify";
+            if (shopify) shopify.hidden = platform !== "shopify";
+            if (shoplazza) shoplazza.hidden = platform !== "shoplazza";
+            if (domain) domain.placeholder = platform === "shopify" ? "example.myshopify.com" : "example.myshoplaza.com";
+        };
+        platformField?.addEventListener("change", updatePlatformFields);
+        updatePlatformFields();
+    });
+
+    const processingRows = Array.from(document.querySelectorAll("[data-draft-row][data-status-url]"))
+        .filter((row) => ["drafting", "publishing"].includes(row.dataset.syncStatus));
+    if (processingRows.length) {
+        const poll = async () => {
+            let completed = false;
+            await Promise.all(processingRows.map(async (row) => {
+                if (!row.isConnected || !["drafting", "publishing"].includes(row.dataset.syncStatus)) return;
+                try {
+                    const response = await fetch(row.dataset.statusUrl, { headers: { Accept: "application/json" } });
+                    if (!response.ok) return;
+                    const payload = await response.json();
+                    row.dataset.syncStatus = payload.status;
+                    const badge = row.querySelector("[data-draft-status]");
+                    if (badge) {
+                        badge.className = `badge text-bg-${payload.status_badge}`;
+                        badge.textContent = payload.status_label;
+                    }
+                    if (!["drafting", "publishing"].includes(payload.status)) completed = true;
+                } catch (error) {
+                    // Polling failures do not alter the background publish task.
+                }
+            }));
+            if (completed) window.location.reload();
+        };
+        window.setInterval(poll, 3000);
+        poll();
+    }
+
+    const editorForm = document.querySelector("[data-product-editor]");
+    if (!editorForm) return;
+    const parseData = (id, fallback) => {
+        try { return JSON.parse(document.getElementById(id)?.textContent || ""); }
+        catch (error) { return fallback; }
+    };
+    let options = parseData("editorOptionsData", []);
+    let variants = parseData("editorVariantsData", []);
+    const optionEditor = editorForm.querySelector("[data-option-editor]");
+    const optionsJson = editorForm.querySelector("[data-options-json]");
+    const variantHead = editorForm.querySelector("[data-variant-head]");
+    const variantBody = editorForm.querySelector("[data-variant-body]");
+    const variantCount = editorForm.querySelector("[data-variant-count]");
+    const variantCountLabel = editorForm.querySelector("[data-variant-count-label]");
+    const addOption = editorForm.querySelector("[data-add-option]");
+    const escapeHtml = (value) => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
+    const signature = (values) => JSON.stringify(options.map((option) => [option.name, values?.[option.name] || ""]));
+    const readOptions = () => Array.from(optionEditor.querySelectorAll("[data-option-row]")).map((row) => ({
+        name: row.querySelector("[data-option-name]").value.trim(),
+        values: Array.from(new Set(row.querySelector("[data-option-values]").value.split(",").map((value) => value.trim()).filter(Boolean))),
+    })).filter((option) => option.name && option.values.length);
+    const readVariantTable = () => {
+        const state = new Map();
+        variantBody.querySelectorAll("[data-variant-row]").forEach((row) => {
+            const index = row.dataset.variantRow;
+            const values = JSON.parse(row.querySelector(`[name="variant_options-${index}"]`).value);
+            state.set(signature(values), {
+                id: Number(row.querySelector(`[name="variant_id-${index}"]`).value || 0), options: values,
+                image_url: row.dataset.imageUrl || "", sku: row.querySelector(`[name="variant_sku-${index}"]`).value,
+                price: row.querySelector(`[name="variant_price-${index}"]`).value,
+                compare_at_price: row.querySelector(`[name="variant_compare_at-${index}"]`).value,
+                inventory_quantity: row.querySelector(`[name="variant_inventory-${index}"]`).value,
+                weight_kg: row.querySelector(`[name="variant_weight-${index}"]`).value,
+                package_length_cm: row.querySelector(`[name="variant_length-${index}"]`).value,
+                package_width_cm: row.querySelector(`[name="variant_width-${index}"]`).value,
+                package_height_cm: row.querySelector(`[name="variant_height-${index}"]`).value,
+            });
+        });
+        return state;
+    };
+    const combinations = () => options.length ? options.reduce(
+        (rows, option) => rows.flatMap((row) => option.values.map((value) => ({ ...row, [option.name]: value }))), [{}]
+    ) : [{}];
+    const renderVariants = () => {
+        const previous = variantBody.children.length ? readVariantTable() : new Map(variants.map((item) => [signature(item.options), item]));
+        const previousValues = Array.from(previous.values());
+        const fallback = previousValues[0] || variants[0] || {};
+        variants = combinations().map((values, index) => {
+            const exact = previous.get(signature(values));
+            if (exact) return exact;
+            const inherited = previousValues.find((item) => Object.entries(item.options || {}).every(
+                ([name, value]) => values[name] === value
+            )) || fallback;
+            return {
+                ...inherited,
+                id: 0,
+                options: values,
+                image_url: inherited.image_url || "",
+                sku: inherited.sku ? `${inherited.sku}-${index + 1}` : `SKU-${String(index + 1).padStart(3, "0")}`,
+                price: inherited.price || "",
+                compare_at_price: inherited.compare_at_price || "",
+                inventory_quantity: inherited.inventory_quantity ?? 0,
+                weight_kg: inherited.weight_kg || "",
+                package_length_cm: inherited.package_length_cm || "",
+                package_width_cm: inherited.package_width_cm || "",
+                package_height_cm: inherited.package_height_cm || "",
+            };
+        });
+        variantHead.innerHTML = `<tr><th>\u53d8\u4f53\u56fe\u7247</th>${options.map((option) => `<th>${escapeHtml(option.name)}</th>`).join("")}<th>SKU</th><th>\u552e\u4ef7</th><th>\u539f\u4ef7</th><th>\u5e93\u5b58</th><th>\u91cd\u91cf(kg)</th><th>\u5305\u88c5\u957f\u5bbd\u9ad8(cm)</th></tr>`;
+        variantBody.innerHTML = variants.map((variant, index) => {
+            const image = variant.image_url ? `<img src="${escapeHtml(variant.image_url)}" alt="">` : `<span class="variant-image-empty"><i class="bi bi-image"></i></span>`;
+            return `<tr data-variant-row="${index}" data-image-url="${escapeHtml(variant.image_url || "")}">
+                <td class="variant-image-cell">${image}<label class="btn btn-sm btn-light">\u4e0a\u4f20<input type="file" hidden name="variant_image-${index}" accept="image/jpeg,image/png,image/webp"></label></td>
+                ${options.map((option) => `<td>${escapeHtml(variant.options?.[option.name] || "")}</td>`).join("")}
+                <td><input type="hidden" name="variant_id-${index}" value="${Number(variant.id || 0)}"><input type="hidden" name="variant_options-${index}" value="${escapeHtml(JSON.stringify(variant.options || {}))}"><input class="form-control form-control-sm" required name="variant_sku-${index}" value="${escapeHtml(variant.sku || "")}"></td>
+                <td><input class="form-control form-control-sm" type="number" min="0" step="0.01" required name="variant_price-${index}" value="${escapeHtml(variant.price ?? "")}"></td>
+                <td><input class="form-control form-control-sm" type="number" min="0" step="0.01" name="variant_compare_at-${index}" value="${escapeHtml(variant.compare_at_price ?? "")}"></td>
+                <td><input class="form-control form-control-sm" type="number" min="0" step="1" required name="variant_inventory-${index}" value="${escapeHtml(variant.inventory_quantity ?? 0)}"></td>
+                <td><input class="form-control form-control-sm" type="number" min="0" step="0.001" name="variant_weight-${index}" value="${escapeHtml(variant.weight_kg ?? "")}"></td>
+                <td><div class="dimension-fields"><input class="form-control form-control-sm" type="number" min="0" step="0.01" name="variant_length-${index}" value="${escapeHtml(variant.package_length_cm ?? "")}" placeholder="L"><input class="form-control form-control-sm" type="number" min="0" step="0.01" name="variant_width-${index}" value="${escapeHtml(variant.package_width_cm ?? "")}" placeholder="W"><input class="form-control form-control-sm" type="number" min="0" step="0.01" name="variant_height-${index}" value="${escapeHtml(variant.package_height_cm ?? "")}" placeholder="H"></div></td>
+            </tr>`;
+        }).join("");
+        variantCount.value = variants.length;
+        variantCountLabel.textContent = `\u5171 ${variants.length} \u4e2a\u53d8\u4f53`;
+        optionsJson.value = JSON.stringify(options);
+    };
+    const renderOptions = () => {
+        optionEditor.innerHTML = options.map((option, index) => `<div class="option-editor-row" data-option-row="${index}"><input class="form-control" data-option-name value="${escapeHtml(option.name || "")}" placeholder="\u5c5e\u6027\u540d\u79f0"><input class="form-control" data-option-values value="${escapeHtml((option.values || []).join(", "))}" placeholder="\u5c5e\u6027\u503c\uff0c\u7528\u9017\u53f7\u5206\u9694"><button class="btn btn-outline-danger" type="button" data-remove-option="${index}"><i class="bi bi-trash"></i></button></div>`).join("");
+        optionEditor.querySelectorAll("input").forEach((input) => input.addEventListener("change", () => {
+            variants = Array.from(readVariantTable().values()); options = readOptions(); variantBody.innerHTML = ""; renderOptions(); renderVariants();
+        }));
+        optionEditor.querySelectorAll("[data-remove-option]").forEach((button) => button.addEventListener("click", () => {
+            variants = Array.from(readVariantTable().values()); options = readOptions(); options.splice(Number(button.dataset.removeOption), 1); variantBody.innerHTML = ""; renderOptions(); renderVariants();
+        }));
+        addOption.disabled = options.length >= 3;
+    };
+    addOption?.addEventListener("click", () => {
+        if (options.length >= 3) return;
+        variants = Array.from(readVariantTable().values());
+        options.push({ name: `Option ${options.length + 1}`, values: ["Default"] });
+        variantBody.innerHTML = "";
+        renderOptions(); renderVariants();
+    });
+    renderOptions(); renderVariants();
+
+    editorForm.querySelectorAll("[data-rich-command]").forEach((button) => button.addEventListener("click", () => {
+        document.execCommand(button.dataset.richCommand, false, null);
+        editorForm.querySelector("[data-rich-editor]")?.focus();
+    }));
+    editorForm.addEventListener("submit", () => {
+        options = readOptions(); optionsJson.value = JSON.stringify(options);
+        editorForm.querySelector("[data-rich-html]").value = editorForm.querySelector("[data-rich-editor]").innerHTML;
     });
 });

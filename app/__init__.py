@@ -7,6 +7,7 @@ from werkzeug.security import generate_password_hash
 from app.config import ProductionConfig
 from app.extensions import db, login_manager, scheduler
 from app.models import CollectionTask, CompetitorProduct, CompetitorTask, User
+from app.models import ProductInboxItem, StoreConnection, StoreProductDraft
 from app.permissions import ROLE_ADMIN, ROLE_SUPER_ADMIN
 from app.services.scheduler_service import restore_active_jobs
 
@@ -46,6 +47,7 @@ def register_blueprints(app):
     from app.blueprints.hashtag_discovery.routes import bp as hashtag_discovery_bp
     from app.blueprints.product_extension.routes import bp as product_extension_bp
     from app.blueprints.xiaohongshu.routes import bp as xiaohongshu_bp
+    from app.blueprints.product_workflow.routes import bp as product_workflow_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(competitor_bp)
@@ -53,6 +55,7 @@ def register_blueprints(app):
     app.register_blueprint(hashtag_discovery_bp)
     app.register_blueprint(product_extension_bp)
     app.register_blueprint(xiaohongshu_bp)
+    app.register_blueprint(product_workflow_bp)
 
     @app.get("/")
     def index():
@@ -78,6 +81,9 @@ def register_shell_context(app):
             "CollectionTask": CollectionTask,
             "CompetitorTask": CompetitorTask,
             "CompetitorProduct": CompetitorProduct,
+            "ProductInboxItem": ProductInboxItem,
+            "StoreConnection": StoreConnection,
+            "StoreProductDraft": StoreProductDraft,
         }
 
 
@@ -113,6 +119,12 @@ def ensure_schema_columns():
         db.session.execute(text("ALTER TABLE collection_tasks ADD COLUMN collection_platforms TEXT"))
         db.session.commit()
     competitor_columns = {column["name"] for column in inspect(db.engine).get_columns("competitor_tasks")}
+    if "collection_mode" not in competitor_columns:
+        db.session.execute(text("ALTER TABLE competitor_tasks ADD COLUMN collection_mode TEXT"))
+        db.session.commit()
+    if "product_urls" not in competitor_columns:
+        db.session.execute(text("ALTER TABLE competitor_tasks ADD COLUMN product_urls TEXT"))
+        db.session.commit()
     if "product_keywords" not in competitor_columns:
         db.session.execute(text("ALTER TABLE competitor_tasks ADD COLUMN product_keywords TEXT"))
         db.session.commit()
@@ -131,4 +143,16 @@ def ensure_schema_columns():
         db.session.commit()
     if "product_tags" not in product_columns:
         db.session.execute(text("ALTER TABLE competitor_products ADD COLUMN product_tags TEXT"))
+        db.session.commit()
+    draft_columns = {column["name"] for column in inspect(db.engine).get_columns("store_product_drafts")}
+    if "product_metafields_json" not in draft_columns:
+        db.session.execute(text("ALTER TABLE store_product_drafts ADD COLUMN product_metafields_json TEXT"))
+        db.session.commit()
+    image_columns = {column["name"] for column in inspect(db.engine).get_columns("draft_product_images")}
+    if "remote_media_id" not in image_columns:
+        db.session.execute(text("ALTER TABLE draft_product_images ADD COLUMN remote_media_id VARCHAR(255)"))
+        db.session.commit()
+    variant_columns = {column["name"] for column in inspect(db.engine).get_columns("draft_variants")}
+    if "remote_media_id" not in variant_columns:
+        db.session.execute(text("ALTER TABLE draft_variants ADD COLUMN remote_media_id VARCHAR(255)"))
         db.session.commit()

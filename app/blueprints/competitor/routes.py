@@ -1,13 +1,15 @@
 import json
+from urllib.parse import urlparse
 
-from flask import Blueprint, current_app, jsonify, redirect, render_template, request, send_file, url_for
+from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, send_file, url_for
 from flask_login import current_user, login_required
 
 from app.extensions import db, scheduler
 from app.models import CompetitorProduct, CompetitorTask
+from app.models import ProductInboxItem
 from app.permissions import permission_required
 from app.services.competitor_export_service import build_products_csv
-from app.services.competitor_service import add_discovered, load_competitors, list_by_type
+from app.services.competitor_service import add_competitor, add_discovered, load_competitors, list_by_type
 from app.services.scheduler_service import enqueue_competitor_task, register_competitor_job
 from app.services.trend_tracking_service import discover_competitors
 
@@ -58,13 +60,19 @@ def index():
         request.args.get("direction"),
     )
     products = CompetitorProduct.query.order_by(*product_ordering).limit(200).all()
+    inbox_product_ids = {
+        source_id for (source_id,) in db.session.query(ProductInboxItem.source_product_id).filter(
+            ProductInboxItem.source_product_id.isnot(None)
+        ).all()
+    }
     return render_template(
         "competitor/index.html",
-        page_title="竞品监控",
+        page_title="产品抓取",
         categories=data["categories"],
         competitors=data["competitors"],
         platform_labels=PLATFORM_LABELS,
         tasks=tasks,
+        inbox_product_ids=inbox_product_ids,
         products=products,
         product_sort=product_sort,
         product_sort_direction=product_sort_direction,
@@ -75,13 +83,25 @@ def index():
 @login_required
 @permission_required("competitor.create_task")
 def create_task():
-    sites = request.form.getlist("target_sites")
-    if not sites:
+    collection_mode = request.form.get("collection_mode", "competitor_sites")
+    if collection_mode not in {"competitor_sites", "product_links"}:
+        collection_mode = "competitor_sites"
+
+    sites = request.form.getlist("target_sites") if collection_mode == "competitor_sites" else []
+    if not sites and collection_mode == "competitor_sites":
         sites = [request.form.get("target_sites", "")]
+    product_urls = parse_product_urls(request.form.get("product_urls", "")) if collection_mode == "product_links" else []
+    if collection_mode == "competitor_sites" and not any(site.strip() for site in sites):
+        return task_request_error("请至少选择一个目标网站。")
+    if collection_mode == "product_links" and not product_urls:
+        return task_request_error("请填写至少一个有效的产品网址（以 http:// 或 https:// 开头）。")
+
     task = CompetitorTask(
         target_sites=",".join(site for site in sites if site),
-        target_category=request.form.get("target_category", ""),
-        product_keywords=request.form.get("product_keywords", "").strip(),
+        collection_mode=collection_mode,
+        product_urls="\n".join(product_urls),
+        target_category=request.form.get("target_category", "") if collection_mode == "competitor_sites" else "",
+        product_keywords=request.form.get("product_keywords", "").strip() if collection_mode == "competitor_sites" else "",
         sort_mode=request.form.get("sort_mode", "best_selling"),
         products_per_site=int(request.form.get("products_per_site") or 20),
         fb_ad_threshold=0,
@@ -134,12 +154,14 @@ def task_status(task_id):
 
 
 def serialize_task(task, categories):
+    is_link_collection = task.is_product_link_collection
     return {
         "id": task.id,
-        "category_label": categories.get(task.target_category, task.target_category) if task.target_category else "不限",
-        "sites": task.site_list,
-        "product_keywords": task.product_keywords or "-",
-        "condition": f'{task.products_per_site} 条/站 · {"最新上架" if task.sort_mode == "newest" else "销量排名"}',
+        "collection_mode": task.collection_mode,
+        "category_label": "链接采集" if is_link_collection else (categories.get(task.target_category, task.target_category) if task.target_category else "不限"),
+        "sites": task.product_url_list if is_link_collection else task.site_list,
+        "product_keywords": "-" if is_link_collection else (task.product_keywords or "-"),
+        "condition": f"逐链接采集 · {len(task.product_url_list)} 条" if is_link_collection else f'{task.products_per_site} 条/站 · {"最新上架" if task.sort_mode == "newest" else "销量排名"}',
         "cycle_label": "即时" if task.collection_cycle == "instant" else task.collection_cycle,
         "collection_cycle": task.collection_cycle,
         "status": task.status,
@@ -226,6 +248,30 @@ def sites():
     )
 
 
+@bp.post("/sites/add")
+@login_required
+@permission_required("competitor.manage_sites")
+def add_site():
+    data = load_competitors()
+    category = request.form.get("category", "comprehensive")
+    platform = request.form.get("platform", "unknown")
+    if category not in data.get("categories", {}):
+        category = "comprehensive"
+    if platform not in PLATFORM_LABELS:
+        platform = "unknown"
+
+    created = add_competitor(
+        request.form.get("domain", ""),
+        category,
+        request.form.get("description", "").strip(),
+        request.form.get("scrape_reason", "").strip(),
+        platform=platform,
+        source="manual",
+    )
+    flash("站点已添加。" if created else "站点未添加：网址为空或已存在。", "success" if created else "warning")
+    return redirect(url_for("competitor.sites"))
+
+
 @bp.post("/sites/track")
 @login_required
 @permission_required("competitor.discover_sites")
@@ -242,3 +288,24 @@ def track_sites():
             candidate.get("platform", "unknown"),
         )
     return redirect(url_for("competitor.sites"))
+
+
+def parse_product_urls(raw_urls):
+    urls = []
+    seen = set()
+    for line in (raw_urls or "").splitlines():
+        url = line.strip()
+        parsed = urlparse(url)
+        if not url or parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            continue
+        if url not in seen:
+            seen.add(url)
+            urls.append(url)
+    return urls
+
+
+def task_request_error(message):
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({"message": message}), 400
+    flash(message, "danger")
+    return redirect(url_for("competitor.index"))

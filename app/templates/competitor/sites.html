@@ -9,6 +9,10 @@
         </div>
         <div class="toolbar">
             <a class="btn btn-outline-secondary" href="{{ url_for('competitor.index') }}">返回监控</a>
+            <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#addCompetitorSiteModal">
+                <i class="bi bi-plus-lg"></i>
+                手动添加站点
+            </button>
             <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#trackCompetitorModal">
                 <i class="bi bi-search"></i>
                 跟踪趋势
@@ -54,4 +58,5 @@
 </section>
 
 {% include "competitor/track_modal.html" %}
+{% include "competitor/add_site_modal.html" %}
 {% endblock %}

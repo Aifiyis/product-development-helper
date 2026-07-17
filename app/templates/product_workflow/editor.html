@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="workflow-steps" aria-label="产品工作流">
+    <a href="{{ url_for('competitor.index') }}"><span>1</span>产品抓取</a>
+    <a href="{{ url_for('product_workflow.inbox', tab='claimed') }}"><span>2</span>产品认领</a>
+    <span class="active"><b>3</b>编辑商品</span>
+    <span><b>4</b>店铺发布</span>
+</section>
+
+<form method="post" enctype="multipart/form-data" class="product-editor-form" data-product-editor>
+    <header class="editor-action-bar">
+        <div>
+            <a href="{{ url_for('product_workflow.inbox', tab='claimed') }}" class="btn btn-light btn-sm"><i class="bi bi-arrow-left"></i></a>
+            <strong>{{ draft.store.name }}</strong>
+            <span class="badge text-bg-light">{{ draft.store.platform_label }}</span>
+            <span class="badge text-bg-{{ draft.status_badge }}">{{ draft.status_label }}</span>
+        </div>
+        <div class="toolbar">
+            <button class="btn btn-outline-primary" type="submit" name="after_save" value="save">保存</button>
+            {% if not draft.remote_published and current_user.can("product_inbox.create_draft") %}
+            <button class="btn btn-outline-warning" type="submit" name="after_save" value="draft">
+                {{ "更新店铺草稿" if draft.remote_product_id else "移入待发布" }}
+            </button>
+            {% endif %}
+            {% if current_user.can("product_inbox.publish") %}
+            <button class="btn btn-success" type="submit" name="after_save" value="publish">
+                {{ "更新发布" if draft.remote_published else "发布" }}
+            </button>
+            {% endif %}
+        </div>
+    </header>
+
+    <section class="editor-card">
+        <div class="editor-card-header"><h3>基本信息</h3><span>各字段只影响当前目标店铺</span></div>
+        <div class="editor-card-body editor-fields">
+            <div class="editor-field-wide">
+                <label class="form-label">来源 URL</label>
+                <div class="input-group">
+                    <input class="form-control" value="{{ draft.inbox_item.source_url or '' }}" readonly>
+                    {% if draft.inbox_item.source_url %}<a class="btn btn-outline-secondary" href="{{ draft.inbox_item.source_url }}" target="_blank" rel="noreferrer">访问</a>{% endif %}
+                </div>
+            </div>
+            <div>
+                <label class="form-label">产品类型</label>
+                <input class="form-control" name="product_type" value="{{ draft.product_type or '' }}">
+            </div>
+            <div class="editor-field-wide">
+                <label class="form-label">产品标题</label>
+                <div class="input-group">
+                    <input class="form-control" name="title" value="{{ draft.title }}" maxlength="500" required>
+                    <button class="btn btn-outline-secondary" type="button" disabled title="待开发">翻译（待开发）</button>
+                </div>
+            </div>
+            <div class="editor-field-wide">
+                <label class="form-label">标签</label>
+                <input class="form-control" name="tags" value="{{ draft.tags|join(', ') }}" placeholder="多个标签用逗号分隔">
+            </div>
+        </div>
+    </section>
+
+    <section class="editor-card">
+        <div class="editor-card-header">
+            <h3>Product metafields</h3>
+            <span>同步到 Shopify 商品的 custom.* 字段；Shoplazza 暂仅保存在本系统。</span>
+        </div>
+        <div class="editor-card-body editor-fields">
+            {% for definition in product_metafield_definitions %}
+            <div>
+                <label class="form-label" for="metafield-{{ definition.key }}">{{ definition.label }}</label>
+                <input
+                    class="form-control"
+                    id="metafield-{{ definition.key }}"
+                    name="metafield_{{ definition.key }}"
+                    value="{{ draft.product_metafields.get(definition.key, '') }}"
+                    maxlength="255"
+                >
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+    <section class="editor-card">
+        <div class="editor-card-header"><h3>产品图片</h3><span>第一张图片作为主图；支持上传、删除和排序，不提供图片编辑。</span></div>
+        <div class="editor-card-body">
+            <div class="product-image-grid">
+                {% for image in draft.images %}
+                <article class="product-image-card">
+                    <img src="{{ image.public_url }}" alt="{{ image.alt_text or draft.title }}">
+                    <div class="product-image-meta">
+                        <label>顺序<input class="form-control form-control-sm" type="number" min="0" name="image_position-{{ image.id }}" value="{{ image.position }}"></label>
+                        <input class="form-control form-control-sm" name="image_alt-{{ image.id }}" value="{{ image.alt_text or '' }}" placeholder="图片 Alt">
+                        <label class="form-check"><input class="form-check-input" type="checkbox" name="remove_image-{{ image.id }}" value="1">删除</label>
+                    </div>
+                </article>
+                {% endfor %}
+                <label class="product-image-upload">
+                    <i class="bi bi-cloud-arrow-up"></i>
+                    <span>上传产品图片</span>
+                    <input type="file" name="product_images" accept="image/jpeg,image/png,image/webp" multiple>
+                </label>
+            </div>
+        </div>
+    </section>
+
+    <section class="editor-card">
+        <div class="editor-card-header">
+            <h3>变体属性</h3>
+            <button class="btn btn-link btn-sm" type="button" disabled title="待开发">批量设置（待开发）</button>
+        </div>
+        <div class="editor-card-body">
+            <input type="hidden" name="options_json" data-options-json>
+            <div data-option-editor></div>
+            <button class="btn btn-outline-primary btn-sm mt-3" type="button" data-add-option><i class="bi bi-plus-lg"></i> 添加自定义属性</button>
+        </div>
+    </section>
+
+    <section class="editor-card">
+        <div class="editor-card-header"><h3>变体信息</h3><span data-variant-count-label></span></div>
+        <div class="editor-card-body table-responsive">
+            <input type="hidden" name="variant_count" data-variant-count>
+            <table class="table align-middle variant-editor-table">
+                <thead data-variant-head></thead>
+                <tbody data-variant-body></tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="editor-card">
+        <div class="editor-card-header"><h3>描述信息</h3><button class="btn btn-link btn-sm" type="button" disabled>翻译（待开发）</button></div>
+        <div class="editor-card-body">
+            <div class="rich-editor-toolbar">
+                <button type="button" data-rich-command="bold"><b>B</b></button>
+                <button type="button" data-rich-command="italic"><i>I</i></button>
+                <button type="button" data-rich-command="underline"><u>U</u></button>
+                <button type="button" data-rich-command="insertUnorderedList"><i class="bi bi-list-ul"></i></button>
+                <button type="button" data-rich-command="insertOrderedList"><i class="bi bi-list-ol"></i></button>
+            </div>
+            <div class="rich-editor" contenteditable="true" data-rich-editor>{{ draft.description_html|safe }}</div>
+            <textarea name="description_html" hidden data-rich-html></textarea>
+        </div>
+    </section>
+
+    <p class="text-muted px-2"><i class="bi bi-info-circle"></i> 包装尺寸在目标平台没有标准商品字段时只保存在本系统，不会同步到店铺。</p>
+</form>
+
+<script type="application/json" id="editorOptionsData">{{ draft.options|tojson }}</script>
+<script type="application/json" id="editorVariantsData">{{ editor_variants|tojson }}</script>
+{% endblock %}

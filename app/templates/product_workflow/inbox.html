@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="workflow-steps" aria-label="产品工作流">
+    <a href="{{ url_for('competitor.index') }}"><span>1</span>产品抓取</a>
+    <a class="active" href="{{ url_for('product_workflow.inbox') }}"><span>2</span>产品认领</a>
+    <span><b>3</b>编辑商品</span>
+    <span><b>4</b>店铺发布</span>
+</section>
+
+<section class="content-panel">
+    <div class="panel-header">
+        <div>
+            <h2>产品认领箱</h2>
+            <p>将已抓取产品分配到具体店铺，并为每家店铺维护独立商品副本。</p>
+        </div>
+        {% if current_user.can("stores.view") %}
+        <a class="btn btn-outline-primary" href="{{ url_for('product_workflow.stores') }}">
+            <i class="bi bi-shop"></i> 店铺管理
+        </a>
+        {% endif %}
+    </div>
+
+    <form method="get" class="workflow-filter">
+        <input type="hidden" name="tab" value="{{ tab }}">
+        <div>
+            <label class="form-label">SKU</label>
+            <input class="form-control" name="sku" value="{{ filters.sku }}" placeholder="输入 SKU">
+        </div>
+        <div>
+            <label class="form-label">产品标题</label>
+            <input class="form-control" name="title" value="{{ filters.title }}" placeholder="输入产品标题">
+        </div>
+        {% if tab == "claimed" %}
+        <div>
+            <label class="form-label">店铺</label>
+            <select class="form-select" name="store_id">
+                <option value="">全部店铺</option>
+                {% for store in stores %}
+                <option value="{{ store.id }}" {% if filters.store_id == store.id %}selected{% endif %}>{{ store.name }} · {{ store.platform_label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label class="form-label">发布状态</label>
+            <select class="form-select" name="status">
+                <option value="">全部状态</option>
+                {% for value, label in [("local", "本地待处理"), ("drafting", "草稿创建中"), ("remote_draft", "店铺草稿"), ("publishing", "发布中"), ("published", "发布成功"), ("failed", "发布失败")] %}
+                <option value="{{ value }}" {% if filters.status == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+        <div class="workflow-filter-action">
+            <button class="btn btn-primary" type="submit"><i class="bi bi-search"></i> 筛选</button>
+            <a class="btn btn-light" href="{{ url_for('product_workflow.inbox', tab=tab) }}">重置</a>
+        </div>
+    </form>
+
+    <nav class="workflow-tabs">
+        <a class="{% if tab != 'claimed' %}active{% endif %}" href="{{ url_for('product_workflow.inbox', tab='unclaimed') }}">
+            未认领 <span>{{ unclaimed_items|length }}</span>
+        </a>
+        <a class="{% if tab == 'claimed' %}active{% endif %}" href="{{ url_for('product_workflow.inbox', tab='claimed') }}">
+            已认领 <span>{{ claimed_drafts|length }}</span>
+        </a>
+    </nav>
+
+    {% if tab != "claimed" %}
+    <div class="table-responsive">
+        <table class="table table-hover align-middle workflow-table">
+            <thead><tr><th>图片</th><th>标题</th><th>SKU</th><th>采集来源</th><th>移入时间</th><th class="text-end">操作</th></tr></thead>
+            <tbody>
+            {% for item in unclaimed_items %}
+            <tr>
+                <td>{% if item.main_image %}<img class="product-thumb" src="{{ item.main_image }}" alt="">{% else %}<div class="product-thumb product-thumb-empty"><i class="bi bi-image"></i></div>{% endif %}</td>
+                <td class="title-cell">{{ item.title }}</td>
+                <td>{{ item.sku_summary or "-" }}</td>
+                <td>{{ item.source_domain }}</td>
+                <td>{{ item.moved_at.strftime("%Y-%m-%d %H:%M") }}</td>
+                <td class="text-end">
+                    {% if current_user.can("product_inbox.claim") %}
+                    <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#claimModal{{ item.id }}">认领</button>
+                    {% endif %}
+                </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="6"><div class="table-empty"><i class="bi bi-inbox"></i>暂无未认领产品</div></td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="table-responsive">
+        <table class="table table-hover align-middle workflow-table">
+            <thead><tr><th>图片</th><th>标题</th><th>目标店铺</th><th>SKU</th><th>状态</th><th>更新时间</th><th class="text-end">操作</th></tr></thead>
+            <tbody>
+            {% for draft in claimed_drafts %}
+            <tr data-draft-row="{{ draft.id }}" data-sync-status="{{ draft.sync_status }}" data-status-url="{{ url_for('product_workflow.draft_status', draft_id=draft.id) }}">
+                <td>{% if draft.main_image %}<img class="product-thumb" src="{{ draft.main_image }}" alt="">{% else %}<div class="product-thumb product-thumb-empty"><i class="bi bi-image"></i></div>{% endif %}</td>
+                <td class="title-cell">{{ draft.title }}</td>
+                <td><strong>{{ draft.store.name }}</strong><small class="d-block text-muted">{{ draft.store.platform_label }}</small></td>
+                <td>{{ draft.sku_summary or "-" }}</td>
+                <td>
+                    <span class="badge text-bg-{{ draft.status_badge }}" data-draft-status>{{ draft.status_label }}</span>
+                    {% if draft.last_error %}<small class="d-block text-danger workflow-error" title="{{ draft.last_error }}">{{ draft.last_error }}</small>{% endif %}
+                </td>
+                <td>{{ draft.updated_at.strftime("%Y-%m-%d %H:%M") }}</td>
+                <td class="text-end workflow-actions">
+                    {% if current_user.can("product_inbox.edit") %}
+                    <a class="btn btn-sm btn-outline-primary" href="{{ url_for('product_workflow.edit_draft', draft_id=draft.id) }}">编辑</a>
+                    {% endif %}
+                    {% if current_user.can("product_inbox.claim") %}
+                    <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#claimMoreModal{{ draft.id }}">认领更多店铺</button>
+                    {% endif %}
+                    {% if not draft.remote_published and current_user.can("product_inbox.create_draft") %}
+                    <form method="post" action="{{ url_for('product_workflow.create_remote_draft', draft_id=draft.id) }}">
+                        <button class="btn btn-sm btn-outline-warning" {% if draft.sync_status in ["drafting", "publishing"] %}disabled{% endif %}>
+                            {{ "更新店铺草稿" if draft.remote_product_id else "移入待发布" }}
+                        </button>
+                    </form>
+                    {% endif %}
+                    {% if current_user.can("product_inbox.publish") %}
+                    <form method="post" action="{{ url_for('product_workflow.publish_draft', draft_id=draft.id) }}">
+                        <button class="btn btn-sm btn-success" {% if draft.sync_status in ["drafting", "publishing"] %}disabled{% endif %}>
+                            {{ "更新发布" if draft.remote_published else "发布" }}
+                        </button>
+                    </form>
+                    {% endif %}
+                    {% if draft.remote_url %}<a class="btn btn-sm btn-outline-secondary" href="{{ draft.remote_url }}" target="_blank" rel="noreferrer">店铺商品</a>{% endif %}
+                    {% if draft.last_error %}<button class="btn btn-sm btn-outline-danger" type="button" data-bs-toggle="modal" data-bs-target="#draftErrorModal{{ draft.id }}">查看错误</button>{% endif %}
+                </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7"><div class="table-empty"><i class="bi bi-box-seam"></i>暂无已认领产品</div></td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</section>
+
+{% for item in unclaimed_items %}
+<div class="modal fade" id="claimModal{{ item.id }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <form method="post" action="{{ url_for('product_workflow.claim_item', item_id=item.id) }}" class="modal-content">
+            <div class="modal-header">
+                <div><h5 class="modal-title">选择店铺认领产品</h5><small class="text-muted">{{ item.title }}</small></div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input class="form-control mb-3" type="search" placeholder="搜索店铺名称" data-store-search>
+                {% for platform, label in [("shopify", "Shopify"), ("shoplazza", "Shoplazza")] %}
+                <section class="store-choice-group">
+                    <h6>{{ label }}</h6>
+                    <div class="store-choice-grid">
+                    {% for store in stores if store.platform == platform %}
+                        <label class="store-choice" data-store-name="{{ store.name|lower }}">
+                            <input class="form-check-input" type="checkbox" name="store_ids" value="{{ store.id }}">
+                            <span><strong>{{ store.name }}</strong><small>{{ store.shop_domain }}</small></span>
+                        </label>
+                    {% else %}
+                        <p class="text-muted">暂无已启用的 {{ label }} 店铺。</p>
+                    {% endfor %}
+                    </div>
+                </section>
+                {% endfor %}
+            </div>
+            <div class="modal-footer">
+                <a class="btn btn-light me-auto" href="{{ url_for('product_workflow.stores') }}">管理店铺</a>
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">关闭</button>
+                <button type="submit" class="btn btn-primary">确认认领</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endfor %}
+{% for draft in claimed_drafts %}
+<div class="modal fade" id="claimMoreModal{{ draft.id }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <form method="post" action="{{ url_for('product_workflow.claim_item', item_id=draft.inbox_item.id) }}" class="modal-content">
+            <div class="modal-header">
+                <div><h5 class="modal-title">认领到更多店铺</h5><small class="text-muted">{{ draft.inbox_item.title }}</small></div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input class="form-control mb-3" type="search" placeholder="搜索店铺名称" data-store-search>
+                {% for platform, label in [("shopify", "Shopify"), ("shoplazza", "Shoplazza")] %}
+                <section class="store-choice-group">
+                    <h6>{{ label }}</h6>
+                    <div class="store-choice-grid">
+                    {% for store in stores if store.platform == platform %}
+                        {% set already_claimed = store.id in draft.inbox_item.claimed_store_ids %}
+                        <label class="store-choice{% if already_claimed %} opacity-75{% endif %}" data-store-name="{{ store.name|lower }}">
+                            <input class="form-check-input" type="checkbox" name="store_ids" value="{{ store.id }}" {% if already_claimed %}checked disabled{% endif %}>
+                            <span><strong>{{ store.name }}</strong><small>{{ store.shop_domain }}{% if already_claimed %} · 已认领{% endif %}</small></span>
+                        </label>
+                    {% else %}
+                        <p class="text-muted">暂无已启用的 {{ label }} 店铺。</p>
+                    {% endfor %}
+                    </div>
+                </section>
+                {% endfor %}
+            </div>
+            <div class="modal-footer">
+                <a class="btn btn-light me-auto" href="{{ url_for('product_workflow.stores') }}">管理店铺</a>
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">关闭</button>
+                <button type="submit" class="btn btn-primary">确认认领</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endfor %}
+{% for draft in claimed_drafts if draft.last_error %}
+<div class="modal fade" id="draftErrorModal{{ draft.id }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title">发布错误</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body"><pre class="workflow-error-detail">{{ draft.last_error }}</pre></div>
+            <div class="modal-footer"><button type="button" class="btn btn-light" data-bs-dismiss="modal">关闭</button></div>
+        </div>
+    </div>
+</div>
+{% endfor %}
+{% endblock %}

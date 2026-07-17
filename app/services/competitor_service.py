@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from urllib.parse import urlparse
 
 from flask import current_app
 
@@ -19,6 +20,17 @@ def save_competitors(data):
 
 
 def add_discovered(domain, category, description, scrape_reason, platform="unknown"):
+    return add_competitor(
+        domain,
+        category,
+        description,
+        scrape_reason,
+        platform=platform,
+        source="discovered",
+    )
+
+
+def add_competitor(domain, category, description, scrape_reason, platform="unknown", source="manual"):
     data = load_competitors()
     normalized = normalize_domain(domain)
     if not normalized:
@@ -34,7 +46,7 @@ def add_discovered(domain, category, description, scrape_reason, platform="unkno
             "platform": platform or "unknown",
             "description": description or "趋势发现新增竞品",
             "scrape_reason": scrape_reason or "由趋势跟踪候选生成",
-            "source": "discovered",
+            "source": source,
             "selected": False,
         }
     )
@@ -51,4 +63,8 @@ def list_by_type():
 
 
 def normalize_domain(domain):
-    return (domain or "").strip().lower().removeprefix("https://").removeprefix("http://").strip("/")
+    raw = (domain or "").strip()
+    if not raw:
+        return ""
+    parsed = urlparse(raw if "://" in raw else f"//{raw}")
+    return (parsed.hostname or "").lower()

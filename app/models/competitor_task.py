@@ -8,6 +8,8 @@ class CompetitorTask(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     target_sites = db.Column(db.Text, nullable=False)
+    collection_mode = db.Column(db.String(30), nullable=False, default="competitor_sites")
+    product_urls = db.Column(db.Text, nullable=True)
     target_category = db.Column(db.String(80), nullable=True)
     product_keywords = db.Column(db.Text, nullable=True)
     sort_mode = db.Column(db.String(40), nullable=False, default="best_selling")
@@ -33,6 +35,21 @@ class CompetitorTask(db.Model):
         raw = self.target_sites or ""
         normalized = raw.replace("，", ",").replace("\n", ",")
         return [item.strip().lower().removeprefix("https://").removeprefix("http://").strip("/") for item in normalized.split(",") if item.strip()]
+
+    @property
+    def product_url_list(self):
+        seen = set()
+        urls = []
+        for value in (self.product_urls or "").splitlines():
+            url = value.strip()
+            if url and url not in seen:
+                seen.add(url)
+                urls.append(url)
+        return urls
+
+    @property
+    def is_product_link_collection(self):
+        return self.collection_mode == "product_links"
 
     @property
     def keyword_list(self):

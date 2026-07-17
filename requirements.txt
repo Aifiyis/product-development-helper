@@ -9,3 +9,5 @@ browserforge>=1.2
 patchright>=1.49
 python-dotenv>=1.0
 werkzeug>=3.0
+cryptography>=44.0
+bleach>=6.2

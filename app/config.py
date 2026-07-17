@@ -28,6 +28,12 @@ class Config:
     IMAGE_PROVIDER = os.environ.get("IMAGE_PROVIDER", "openai")
     OPENAI_IMAGE_MODEL = os.environ.get("OPENAI_IMAGE_MODEL", "gpt-image-1")
     GEMINI_IMAGE_MODEL = os.environ.get("GEMINI_IMAGE_MODEL", "imagen-4.0-generate-001")
+    STORE_CREDENTIAL_ENCRYPTION_KEY = os.environ.get("STORE_CREDENTIAL_ENCRYPTION_KEY", "")
+    PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
+    MAX_CONTENT_LENGTH = int(os.environ.get("MAX_UPLOAD_MB", "12")) * 1024 * 1024
+    PRODUCT_UPLOAD_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
+    SHOPIFY_MEDIA_POLL_ATTEMPTS = int(os.environ.get("SHOPIFY_MEDIA_POLL_ATTEMPTS", "15"))
+    SHOPIFY_MEDIA_POLL_INTERVAL = float(os.environ.get("SHOPIFY_MEDIA_POLL_INTERVAL", "2"))
 
 
 class DevelopmentConfig(Config):

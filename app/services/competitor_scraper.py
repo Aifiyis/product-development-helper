@@ -34,6 +34,8 @@ class CompetitorScraper(ScraperBase):
         saved = 0
         self.errors = []
         try:
+            if task.is_product_link_collection:
+                return self.run_link_collection(task)
             for domain in task.site_list:
                 domain_saved = 0
                 platform = self.platform_for_domain(domain)
@@ -91,6 +93,51 @@ class CompetitorScraper(ScraperBase):
                     continue
         finally:
             self.close_dynamic_browser()
+        return saved
+
+    def run_link_collection(self, task):
+        saved = 0
+        for product_url in task.product_url_list:
+            try:
+                domain = normalize_domain(urlparse(product_url).netloc)
+                if not domain:
+                    self.errors.append(f"{product_url}: 产品网址缺少有效域名。")
+                    continue
+                raw = {
+                    "source_type": "direct_product_link",
+                    "title": title_from_product_url(product_url),
+                    "price": None,
+                    "product_created_at": None,
+                    "product_tags": [],
+                    "product_media": {"main": "", "carousel": []},
+                    "variants": [],
+                    "description": "",
+                    "product_url": product_url,
+                    "reviews_count": 0,
+                }
+                raw = self.enrich_product_detail(raw)
+                db.session.add(
+                    CompetitorProduct(
+                        task_id=task.id,
+                        source_domain=domain,
+                        source_type=raw["source_type"],
+                        title=raw.get("title"),
+                        price=raw.get("price"),
+                        product_created_at=parse_datetime(raw.get("product_created_at")),
+                        product_tags=json.dumps(normalize_tags(raw.get("product_tags")), ensure_ascii=False),
+                        product_media=json.dumps(raw.get("product_media") or {}, ensure_ascii=False),
+                        reviews_count=raw.get("reviews_count") or 0,
+                        variants=json.dumps(raw.get("variants") or [], ensure_ascii=False),
+                        description=raw.get("description"),
+                        product_url=product_url,
+                        collected_at=datetime.utcnow(),
+                    )
+                )
+                db.session.commit()
+                saved += 1
+            except Exception as exc:
+                db.session.rollback()
+                self.errors.append(f"{product_url}: 采集异常（{type(exc).__name__}: {exc}）。")
         return saved
 
     def platform_for_domain(self, domain):
@@ -184,6 +231,7 @@ class CompetitorScraper(ScraperBase):
 
     def normalize_shopify_product(self, domain, item):
         variants = item.get("variants") or []
+        option_names = [option.get("name") for option in item.get("options") or []]
         images = item.get("images") or []
         images_by_id = {image.get("id"): image.get("src") for image in images if image.get("id") and image.get("src")}
         first_variant = variants[0] if variants else {}
@@ -209,9 +257,17 @@ class CompetitorScraper(ScraperBase):
             "variants": [
                 {
                     "title": variant.get("title"),
+                    "sku": variant.get("sku"),
                     "price": variant.get("price"),
+                    "compare_at_price": variant.get("compare_at_price"),
+                    "inventory_quantity": variant.get("inventory_quantity"),
                     "available": variant.get("available"),
                     "image": variant_image_url(variant, images_by_id),
+                    "option_values": {
+                        name: variant.get(f"option{index}")
+                        for index, name in enumerate(option_names, start=1)
+                        if name and variant.get(f"option{index}") not in (None, "")
+                    },
                 }
                 for variant in variants
             ],
@@ -1006,7 +1062,7 @@ def extract_structured_price(html):
     )
     if amount:
         if re.match(r"[$€£]", amount.strip()):
-            return amount.strip()
+            return normalize_platform_price(amount.strip(), html)
         currency = first_match(
             html,
             [
@@ -1014,7 +1070,7 @@ def extract_structured_price(html):
                 r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:price:currency["\']',
             ],
         )
-        return format_price(amount, currency)
+        return normalize_platform_price(format_price(amount, currency), html)
 
     for script in re.findall(r'(?is)<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>', html):
         try:
@@ -1023,8 +1079,19 @@ def extract_structured_price(html):
             continue
         price = price_from_json_ld(payload)
         if price:
-            return price
+            return normalize_platform_price(price, html)
     return None
+
+def normalize_platform_price(price, html):
+    text = str(price or "").strip()
+    if not text or detect_platform(html) != "shoplazza":
+        return text or None
+    match = re.fullmatch(r"([$€£]?)(\d{3,})", text)
+    if not match:
+        return text
+    symbol, cents = match.groups()
+    return f"{symbol}{int(cents) / 100:.2f}"
+
 
 
 def price_from_json_ld(payload):
