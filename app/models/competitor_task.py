@@ -10,6 +10,9 @@ class CompetitorTask(db.Model):
     target_sites = db.Column(db.Text, nullable=False)
     collection_mode = db.Column(db.String(30), nullable=False, default="competitor_sites")
     product_urls = db.Column(db.Text, nullable=True)
+    category_url = db.Column(db.String(1000), nullable=True)
+    category_scope = db.Column(db.String(20), nullable=False, default="pages")
+    category_page_count = db.Column(db.Integer, nullable=False, default=1)
     target_category = db.Column(db.String(80), nullable=True)
     product_keywords = db.Column(db.Text, nullable=True)
     sort_mode = db.Column(db.String(40), nullable=False, default="best_selling")
@@ -50,6 +53,10 @@ class CompetitorTask(db.Model):
     @property
     def is_product_link_collection(self):
         return self.collection_mode == "product_links"
+
+    @property
+    def is_category_collection(self):
+        return self.collection_mode == "category"
 
     @property
     def keyword_list(self):

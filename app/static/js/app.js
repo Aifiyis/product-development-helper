@@ -115,7 +115,11 @@ document.addEventListener("DOMContentLoaded", () => {
             cfield("title").textContent = product.title || "产品详情";
             cfield("meta").textContent = `${product.source_type || "-"} · ${product.collected_at || "-"}`;
             cfield("source_domain").textContent = product.source_domain || "-";
-            cfield("price").textContent = product.price || "-";
+            cfield("platform").textContent = product.platform_label || product.platform || "未知";
+            const oldPrice = product.previous_price
+                ? `<span class="text-muted ms-2">${escapeHtml(product.previous_price)}（${escapeHtml(product.previous_collected_at || "-")}）</span>`
+                : "";
+            cfield("price").innerHTML = `<span>${escapeHtml(product.price || "-")}</span>${oldPrice}`;
             cfield("product_created_at").textContent = product.product_created_at || "-";
             cfield("reviews_count").textContent = product.reviews_count ?? 0;
             cfield("fb_ad_count").textContent = product.fb_ad_count ?? "-";
@@ -154,13 +158,30 @@ document.addEventListener("DOMContentLoaded", () => {
 
             const variantsEl = cfield("variants");
             const variants = Array.isArray(product.variants) ? product.variants : [];
-            variantsEl.innerHTML = variants.length
-                ? variants.map((variant) => {
-                    const values = Array.isArray(variant.values) && variant.values.length ? ` · ${variant.values.join(" / ")}` : "";
-                    const source = variant.source ? ` · ${variant.source}` : "";
-                    return `<div class="triggered-comment">${variant.title || "-"} · ${variant.price || "-"} · ${variant.available === false ? "售罄" : "可售"}${source}${values}</div>`;
-                }).join("")
-                : '<div class="triggered-comment text-muted">暂无变体</div>';
+            const groupedVariants = new Map();
+            variants.forEach((variant) => {
+                const optionValues = variant.option_values || variant.options;
+                if (optionValues && typeof optionValues === "object" && !Array.isArray(optionValues)) {
+                    Object.entries(optionValues).forEach(([name, value]) => {
+                        if (!name || !value) return;
+                        if (!groupedVariants.has(name)) groupedVariants.set(name, []);
+                        const values = groupedVariants.get(name);
+                        if (!values.includes(String(value))) values.push(String(value));
+                    });
+                }
+            });
+            if (groupedVariants.size) {
+                variantsEl.innerHTML = Array.from(groupedVariants.entries()).map(([name, values]) =>
+                    `<div class="triggered-comment"><strong>${escapeHtml(name)}</strong> · ${escapeHtml(values.join(" / "))}</div>`
+                ).join("");
+            } else {
+                variantsEl.innerHTML = variants.length
+                    ? variants.map((variant) => {
+                        const values = Array.isArray(variant.values) && variant.values.length ? ` · ${escapeHtml(variant.values.join(" / "))}` : "";
+                        return `<div class="triggered-comment">${escapeHtml(variant.title || "-")}${values} · ${variant.available === false ? "售罄" : "可售"}</div>`;
+                    }).join("")
+                    : '<div class="triggered-comment text-muted">暂无变体</div>';
+            }
 
             const link = cfield("product_url");
             if (product.product_url) {
@@ -225,34 +246,86 @@ document.addEventListener("DOMContentLoaded", () => {
     document.querySelectorAll("[data-competitor-task-form]").forEach((form) => {
         const siteFields = form.querySelector("[data-competitor-sites-fields]");
         const linkFields = form.querySelector("[data-competitor-links-fields]");
+        const categoryFields = form.querySelector("[data-competitor-category-fields]");
         const siteOptions = form.querySelector("[data-competitor-site-options]");
         const siteSelect = form.querySelector("[data-site-select]");
         const categorySelect = form.querySelector("[data-site-category-filter]");
         const siteSearch = form.querySelector("[data-site-search]");
         const linkTextarea = form.querySelector("[name='product_urls']");
+        const categoryUrl = form.querySelector("[data-category-url]");
+        const categoryScope = form.querySelector("[data-category-scope]");
+        const categoryPageCount = form.querySelector("[data-category-page-count]");
+        const categoryPageCountWrap = form.querySelector("[data-category-page-count-wrap]");
+        const cycle = form.querySelector("[data-competitor-cycle]");
+
+        function syncCategoryScope() {
+            const usePageCount = categoryScope?.value === "pages";
+            if (categoryPageCountWrap) categoryPageCountWrap.hidden = !usePageCount;
+            if (categoryPageCount) {
+                categoryPageCount.disabled = !usePageCount || categoryScope.disabled;
+                categoryPageCount.required = usePageCount && !categoryScope.disabled;
+            }
+        }
 
         function syncCollectionMode() {
-            const isLinkCollection = form.querySelector("[data-competitor-collection-mode]:checked")?.value === "product_links";
-            if (siteFields) siteFields.hidden = isLinkCollection;
-            if (siteOptions) siteOptions.hidden = isLinkCollection;
+            const mode = form.querySelector("[data-competitor-collection-mode]:checked")?.value || "competitor_sites";
+            const isSiteCollection = mode === "competitor_sites";
+            const isLinkCollection = mode === "product_links";
+            const isCategoryCollection = mode === "category";
+            if (siteFields) siteFields.hidden = !isSiteCollection;
+            if (siteOptions) siteOptions.hidden = !isSiteCollection;
             if (linkFields) linkFields.hidden = !isLinkCollection;
+            if (categoryFields) categoryFields.hidden = !isCategoryCollection;
             if (siteSelect) {
-                siteSelect.disabled = isLinkCollection;
-                siteSelect.required = !isLinkCollection;
+                siteSelect.disabled = !isSiteCollection;
+                siteSelect.required = isSiteCollection;
             }
-            if (categorySelect) categorySelect.disabled = isLinkCollection;
-            if (siteSearch) siteSearch.disabled = isLinkCollection;
+            if (categorySelect) categorySelect.disabled = !isSiteCollection;
+            if (siteSearch) siteSearch.disabled = !isSiteCollection;
             if (linkTextarea) {
                 linkTextarea.disabled = !isLinkCollection;
                 linkTextarea.required = isLinkCollection;
             }
+            if (categoryUrl) {
+                categoryUrl.disabled = !isCategoryCollection;
+                categoryUrl.required = isCategoryCollection;
+            }
+            if (categoryScope) categoryScope.disabled = !isCategoryCollection;
             if (siteOptions) {
                 siteOptions.querySelectorAll("input, select").forEach((field) => {
-                    field.disabled = isLinkCollection;
+                    field.disabled = !isSiteCollection;
                 });
+            }
+            if (cycle) {
+                cycle.querySelectorAll("option").forEach((option) => {
+                    const hideOption = isLinkCollection && option.value !== "instant";
+                    option.hidden = hideOption;
+                    option.disabled = hideOption;
+                });
+                if (isLinkCollection) cycle.value = "instant";
+            }
+            syncCategoryScope();
+        }
+
+        function isCollectionUrl(value) {
+            try {
+                const url = new URL(value);
+                const path = url.pathname.toLowerCase().replace(/\/$/, "");
+                return path === "/collections" || path.startsWith("/collections/");
+            } catch (error) {
+                return false;
             }
         }
 
+        linkTextarea?.addEventListener("input", () => {
+            const urls = linkTextarea.value.split(/\r?\n/).map((value) => value.trim()).filter(Boolean);
+            if (urls.length !== 1 || !isCollectionUrl(urls[0])) return;
+            if (categoryUrl) categoryUrl.value = urls[0];
+            const categoryMode = form.querySelector('[data-competitor-collection-mode][value="category"]');
+            if (categoryMode) categoryMode.checked = true;
+            syncCollectionMode();
+        });
+        categoryScope?.addEventListener("change", syncCategoryScope);
         form.querySelectorAll("[data-competitor-collection-mode]").forEach((radio) => {
             radio.addEventListener("change", syncCollectionMode);
         });
@@ -277,6 +350,12 @@ document.addEventListener("DOMContentLoaded", () => {
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;");
 
+    function taskSitesDisclosure(sites) {
+        const values = Array.isArray(sites) ? sites.filter(Boolean) : [];
+        if (!values.length) return "-";
+        const summary = values.length > 1 ? `${values[0]} 等 ${values.length} 项` : values[0];
+        return `<details class="task-sites-disclosure"><summary>${escapeTaskHtml(summary)}</summary><div>${values.map((value) => `<div>${escapeTaskHtml(value)}</div>`).join("")}</div></details>`;
+    }
     function upsertCompetitorTaskRow(task) {
         const tbody = document.querySelector("[data-competitor-task-body]");
         if (!tbody || !task) {
@@ -291,7 +370,7 @@ document.addEventListener("DOMContentLoaded", () => {
         row.dataset.taskRow = task.id;
         row.innerHTML = `
             <td>${escapeTaskHtml(task.category_label || "不限")}</td>
-            <td class="task-sites">${escapeTaskHtml((task.sites || []).join(", "))}</td>
+            <td>${taskSitesDisclosure(task.sites || [])}</td>
             <td>${escapeTaskHtml(task.product_keywords || "-")}</td>
             <td>${escapeTaskHtml(task.condition || "-")}</td>
             <td>${escapeTaskHtml(task.cycle_label || "-")}</td>
@@ -567,6 +646,17 @@ document.addEventListener("DOMContentLoaded", () => {
         });
         return state;
     };
+    const deepClone = (value) => JSON.parse(JSON.stringify(value));
+    const editorHistory = [];
+    let optionEditSnapshot = null;
+    const captureEditorState = () => ({
+        options: deepClone(readOptions()),
+        variants: deepClone(Array.from(readVariantTable().values())),
+    });
+    const rememberEditorState = (state = null) => {
+        editorHistory.push(state || captureEditorState());
+        if (editorHistory.length > 50) editorHistory.shift();
+    };
     const combinations = () => options.length ? options.reduce(
         (rows, option) => rows.flatMap((row) => option.values.map((value) => ({ ...row, [option.name]: value }))), [{}]
     ) : [{}];
@@ -599,7 +689,7 @@ document.addEventListener("DOMContentLoaded", () => {
         variantBody.innerHTML = variants.map((variant, index) => {
             const image = variant.image_url ? `<img src="${escapeHtml(variant.image_url)}" alt="">` : `<span class="variant-image-empty"><i class="bi bi-image"></i></span>`;
             return `<tr data-variant-row="${index}" data-image-url="${escapeHtml(variant.image_url || "")}">
-                <td class="variant-image-cell">${image}<label class="btn btn-sm btn-light">\u4e0a\u4f20<input type="file" hidden name="variant_image-${index}" accept="image/jpeg,image/png,image/webp"></label></td>
+                <td class="variant-image-cell">${image}<input class="visually-hidden" id="variant-image-${index}" type="file" name="variant_image-${index}" accept="image/jpeg,image/png,image/webp" data-variant-image-input><label class="btn btn-sm btn-light" for="variant-image-${index}">\u4e0a\u4f20</label></td>
                 ${options.map((option) => `<td>${escapeHtml(variant.options?.[option.name] || "")}</td>`).join("")}
                 <td><input type="hidden" name="variant_id-${index}" value="${Number(variant.id || 0)}"><input type="hidden" name="variant_options-${index}" value="${escapeHtml(JSON.stringify(variant.options || {}))}"><input class="form-control form-control-sm" required name="variant_sku-${index}" value="${escapeHtml(variant.sku || "")}"></td>
                 <td><input class="form-control form-control-sm" type="number" min="0" step="0.01" required name="variant_price-${index}" value="${escapeHtml(variant.price ?? "")}"></td>
@@ -615,20 +705,58 @@ document.addEventListener("DOMContentLoaded", () => {
     };
     const renderOptions = () => {
         optionEditor.innerHTML = options.map((option, index) => `<div class="option-editor-row" data-option-row="${index}"><input class="form-control" data-option-name value="${escapeHtml(option.name || "")}" placeholder="\u5c5e\u6027\u540d\u79f0"><input class="form-control" data-option-values value="${escapeHtml((option.values || []).join(", "))}" placeholder="\u5c5e\u6027\u503c\uff0c\u7528\u9017\u53f7\u5206\u9694"><button class="btn btn-outline-danger" type="button" data-remove-option="${index}"><i class="bi bi-trash"></i></button></div>`).join("");
-        optionEditor.querySelectorAll("input").forEach((input) => input.addEventListener("change", () => {
-            variants = Array.from(readVariantTable().values()); options = readOptions(); variantBody.innerHTML = ""; renderOptions(); renderVariants();
-        }));
+        optionEditor.querySelectorAll("input").forEach((input) => {
+            input.addEventListener("focus", () => { optionEditSnapshot = captureEditorState(); }, { once: true });
+            input.addEventListener("change", () => {
+                rememberEditorState(optionEditSnapshot);
+                optionEditSnapshot = null;
+                variants = Array.from(readVariantTable().values()); options = readOptions(); variantBody.innerHTML = ""; renderOptions(); renderVariants();
+            });
+        });
         optionEditor.querySelectorAll("[data-remove-option]").forEach((button) => button.addEventListener("click", () => {
+            rememberEditorState();
             variants = Array.from(readVariantTable().values()); options = readOptions(); options.splice(Number(button.dataset.removeOption), 1); variantBody.innerHTML = ""; renderOptions(); renderVariants();
         }));
         addOption.disabled = options.length >= 3;
     };
     addOption?.addEventListener("click", () => {
         if (options.length >= 3) return;
+        rememberEditorState();
         variants = Array.from(readVariantTable().values());
         options.push({ name: `Option ${options.length + 1}`, values: ["Default"] });
         variantBody.innerHTML = "";
         renderOptions(); renderVariants();
+    });
+    variantBody.addEventListener("change", (event) => {
+        const input = event.target.closest("[data-variant-image-input]");
+        if (!input || !input.files?.[0]) return;
+        const cell = input.closest(".variant-image-cell");
+        let preview = cell.querySelector("img");
+        if (!preview) {
+            cell.querySelector(".variant-image-empty")?.remove();
+            preview = document.createElement("img");
+            preview.alt = "";
+            cell.prepend(preview);
+        }
+        if (preview.dataset.previewUrl) URL.revokeObjectURL(preview.dataset.previewUrl);
+        const previewUrl = URL.createObjectURL(input.files[0]);
+        preview.src = previewUrl;
+        preview.dataset.previewUrl = previewUrl;
+    });
+    editorForm.addEventListener("keydown", (event) => {
+        if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "z" || event.shiftKey) return;
+        const inOptionEditor = event.target.closest("[data-option-editor]");
+        const nativeUndoTarget = event.target.matches("input, textarea") || event.target.isContentEditable;
+        if (!inOptionEditor && nativeUndoTarget) return;
+        const state = editorHistory.pop();
+        if (!state) return;
+        event.preventDefault();
+        options = deepClone(state.options);
+        variants = deepClone(state.variants);
+        optionEditSnapshot = null;
+        variantBody.innerHTML = "";
+        renderOptions();
+        renderVariants();
     });
     renderOptions(); renderVariants();
 

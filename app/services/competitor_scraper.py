@@ -1,10 +1,11 @@
+import itertools
 import json
 import re
 import urllib.error
 import urllib.request
 from datetime import datetime
 from html import unescape
-from urllib.parse import parse_qs, urljoin, urlparse
+from urllib.parse import parse_qs, parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
 from app.extensions import db
 from app.models import CompetitorProduct
@@ -36,6 +37,8 @@ class CompetitorScraper(ScraperBase):
         try:
             if task.is_product_link_collection:
                 return self.run_link_collection(task)
+            if task.is_category_collection:
+                return self.run_category_collection(task)
             for domain in task.site_list:
                 domain_saved = 0
                 platform = self.platform_for_domain(domain)
@@ -47,25 +50,7 @@ class CompetitorScraper(ScraperBase):
                         self.errors.append(f"{domain}: 获取到 {fetched_count} 个产品，但全部被产品关键词过滤。")
                     ads = collect_fb_ads(domain, task.fb_ad_threshold)
                     for raw in products:
-                        raw = self.enrich_product_detail(raw)
-                        product = CompetitorProduct(
-                            task_id=task.id,
-                            source_domain=domain,
-                            source_type=raw.get("source_type", f"{platform}_dom"),
-                            title=raw.get("title"),
-                            price=raw.get("price"),
-                            product_created_at=parse_datetime(raw.get("product_created_at")),
-                            product_tags=json.dumps(normalize_tags(raw.get("product_tags")), ensure_ascii=False),
-                            product_media=json.dumps(raw.get("product_media") or {}, ensure_ascii=False),
-                            reviews_count=raw.get("reviews_count") or 0,
-                            variants=json.dumps(raw.get("variants") or [], ensure_ascii=False),
-                            description=raw.get("description"),
-                            product_url=raw.get("product_url"),
-                            fb_ad_count=self.match_ad_count(raw, ads),
-                            matched_ad=json.dumps({}, ensure_ascii=False),
-                            collected_at=datetime.utcnow(),
-                        )
-                        db.session.add(product)
+                        self.save_or_refresh_product(task, domain, raw, platform, ads)
                         saved += 1
                         domain_saved += 1
                     for ad in ads:
@@ -95,6 +80,80 @@ class CompetitorScraper(ScraperBase):
             self.close_dynamic_browser()
         return saved
 
+    def run_category_collection(self, task):
+        category_url = (task.category_url or "").strip()
+        domain = normalize_domain(urlparse(category_url).netloc)
+        if not domain:
+            self.errors.append(f"{category_url}: 分类网址缺少有效域名。")
+            return 0
+        platform = self.platform_for_domain(domain)
+        try:
+            products = self.fetch_category_products(
+                category_url,
+                collect_all=task.category_scope == "all",
+                page_count=task.category_page_count,
+                platform=platform,
+            )
+            for raw in products:
+                self.save_or_refresh_product(task, domain, raw, platform, [])
+            if not products:
+                self.errors.append(f"{category_url}: 分类页面中没有识别到产品链接。")
+            db.session.commit()
+            return len(products)
+        except Exception as exc:
+            db.session.rollback()
+            self.errors.append(f"{category_url}: 分类采集异常（{type(exc).__name__}: {exc}）。")
+            return 0
+
+    def save_or_refresh_product(self, task, domain, raw, platform, ads):
+        product_url = canonical_product_url(raw.get("product_url"))
+        raw["product_url"] = product_url
+        existing = None
+        if product_url:
+            existing = CompetitorProduct.query.filter(
+                CompetitorProduct.product_url == product_url,
+                CompetitorProduct.source_type != "fb_ads",
+            ).order_by(CompetitorProduct.collected_at.desc(), CompetitorProduct.id.desc()).first()
+        if existing:
+            new_price = raw.get("price")
+            if not new_price:
+                price_probe = self.enrich_product_detail({
+                    "product_url": product_url,
+                    "price": None,
+                    "product_media": {},
+                    "variants": [],
+                })
+                new_price = price_probe.get("price")
+            previous_collected_at = existing.collected_at
+            existing.previous_price = existing.price
+            existing.previous_collected_at = previous_collected_at
+            if new_price not in (None, ""):
+                existing.price = new_price
+            existing.collected_at = datetime.utcnow()
+            return existing
+
+        raw = self.enrich_product_detail(raw)
+        product = CompetitorProduct(
+            task_id=task.id,
+            source_domain=domain,
+            source_type=raw.get("source_type", f"{platform}_dom"),
+            platform=raw.get("platform") or platform or "unknown",
+            title=raw.get("title"),
+            price=raw.get("price"),
+            product_created_at=parse_datetime(raw.get("product_created_at")),
+            product_tags=json.dumps(normalize_tags(raw.get("product_tags")), ensure_ascii=False),
+            product_media=json.dumps(raw.get("product_media") or {}, ensure_ascii=False),
+            reviews_count=raw.get("reviews_count") or 0,
+            variants=json.dumps(raw.get("variants") or [], ensure_ascii=False),
+            description=raw.get("description"),
+            product_url=product_url,
+            fb_ad_count=self.match_ad_count(raw, ads),
+            matched_ad=json.dumps({}, ensure_ascii=False),
+            collected_at=datetime.utcnow(),
+        )
+        db.session.add(product)
+        return product
+
     def run_link_collection(self, task):
         saved = 0
         for product_url in task.product_url_list:
@@ -105,6 +164,7 @@ class CompetitorScraper(ScraperBase):
                     continue
                 raw = {
                     "source_type": "direct_product_link",
+                    "platform": detect_product_platform(product_url),
                     "title": title_from_product_url(product_url),
                     "price": None,
                     "product_created_at": None,
@@ -121,6 +181,7 @@ class CompetitorScraper(ScraperBase):
                         task_id=task.id,
                         source_domain=domain,
                         source_type=raw["source_type"],
+                        platform=raw.get("platform") or "unknown",
                         title=raw.get("title"),
                         price=raw.get("price"),
                         product_created_at=parse_datetime(raw.get("product_created_at")),
@@ -220,6 +281,35 @@ class CompetitorScraper(ScraperBase):
             self.errors.append(f"{domain}: 页面可访问，但当前解析器没有识别到产品列表。")
         return products
 
+    def fetch_category_products(self, category_url, collect_all=False, page_count=1, platform="unknown"):
+        products = []
+        seen_urls = set()
+        max_pages = 500 if collect_all else max(1, min(int(page_count or 1), 100))
+        current_platform = platform
+        for page_number in range(1, max_pages + 1):
+            page_url = category_url if page_number == 1 else with_page_number(category_url, page_number)
+            html = self.fetch_page_html(page_url)
+            if not html:
+                break
+            detected = detect_platform(html)
+            if detected != "unknown" and current_platform in {"unknown", "custom"}:
+                current_platform = detected
+            page_products = parse_product_links(
+                normalize_domain(urlparse(category_url).netloc), html, current_platform
+            )
+            new_count = 0
+            for product in page_products:
+                product_url = canonical_product_url(product.get("product_url"))
+                if not product_url or product_url in seen_urls:
+                    continue
+                product["product_url"] = product_url
+                seen_urls.add(product_url)
+                products.append(product)
+                new_count += 1
+            if not page_products or new_count == 0:
+                break
+        return products
+
     def fetch_page_html(self, url):
         try:
             page = self.fetch(url, stealthy_headers=True)
@@ -246,6 +336,7 @@ class CompetitorScraper(ScraperBase):
         image_urls = unique_urls(image_urls + variant_images)
         return {
             "source_type": "shopify_json",
+            "platform": "shopify",
             "title": item.get("title"),
             "price": first_variant.get("price"),
             "product_created_at": item.get("created_at") or item.get("published_at"),
@@ -287,6 +378,9 @@ class CompetitorScraper(ScraperBase):
             return raw
 
         detail = parse_product_detail(product_url, html)
+        detected_platform = detail.get("platform") or "unknown"
+        if detected_platform != "unknown" or not raw.get("platform"):
+            raw["platform"] = detected_platform
         if detail.get("title"):
             raw["title"] = prefer_detail_title(raw.get("title"), detail["title"])
         if detail.get("price"):
@@ -311,7 +405,11 @@ class CompetitorScraper(ScraperBase):
         if merged_images:
             raw["product_media"] = {"main": merged_images[0], "carousel": merged_images}
 
-        variants = (raw.get("variants") or []) + (detail.get("variants") or [])
+        base_variants = raw.get("variants") or []
+        if any(isinstance(variant.get("option_values"), dict) and variant.get("option_values") for variant in base_variants if isinstance(variant, dict)):
+            variants = base_variants
+        else:
+            variants = base_variants + (detail.get("variants") or [])
         raw["variants"] = dedupe_variants(variants)
         return raw
 
@@ -400,6 +498,20 @@ class CompetitorScraper(ScraperBase):
         return None
 
 
+def canonical_product_url(value):
+    parsed = urlparse((value or "").strip())
+    if not parsed.scheme or not parsed.netloc:
+        return (value or "").strip()
+    path = parsed.path.rstrip("/") or "/"
+    return urlunparse((parsed.scheme.lower(), parsed.netloc.lower(), path, "", "", ""))
+
+
+def with_page_number(value, page_number):
+    parsed = urlparse(value)
+    query = [(key, item) for key, item in parse_qsl(parsed.query, keep_blank_values=True) if key.lower() != "page"]
+    query.append(("page", str(page_number)))
+    return urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, urlencode(query), ""))
+
 def collection_urls(domain, sort_by, platform):
     if platform == "shopline":
         return [
@@ -434,6 +546,19 @@ def detect_platform(html):
     return "unknown"
 
 
+def detect_product_platform(product_url, html=""):
+    host = (urlparse(product_url).hostname or "").lower()
+    if ".etsy." in host or host.endswith("etsy.com"):
+        return "etsy"
+    if ".shein." in host or host.endswith("shein.com"):
+        return "shein"
+    if host.endswith("1688.com") or ".1688.com" in host:
+        return "1688"
+    if ".amazon." in host or host.endswith("amazon.com"):
+        return "amazon"
+    return detect_platform(html)
+
+
 def response_html(page):
     if page is None:
         return ""
@@ -465,6 +590,7 @@ def parse_product_links(domain, html, platform="custom"):
         products.append(
             {
                 "source_type": f"{platform}_dom_product_link",
+                "platform": platform,
                 "title": title,
                 "price": extract_price_near_link(html, href),
                 "product_created_at": None,
@@ -492,7 +618,7 @@ def parse_product_detail(product_url, html):
     )
     description = extract_description_html(html)
     images = extract_product_images(product_url, html)
-    variants = parse_standard_variants(html) + parse_plugin_variants(html)
+    variants = parse_standard_variants(html)
     return {
         "title": strip_html(unescape(title)) if title else "",
         "price": extract_price_near_product(html),
@@ -501,6 +627,7 @@ def parse_product_detail(product_url, html):
         "product_created_at": extract_product_created_at(html),
         "product_tags": extract_product_tags(html),
         "reviews_count": extract_reviews_count(html),
+        "platform": detect_product_platform(product_url, html),
         "variants": variants,
     }
 
@@ -839,18 +966,122 @@ def is_product_image(url):
 
 
 def parse_standard_variants(html):
-    variants = []
-    for chunk in re.findall(r'(?is)<select\b[^>]*name=["\'][^"\']*(?:id|variant|option)[^"\']*["\'][^>]*>.*?</select>', html):
-        label = extract_label(chunk) or "variant"
-        values = extract_values(chunk)
-        if values:
-            variants.append({"title": label, "price": "", "available": True, "source": "standard_select", "values": values})
+    groups = []
+    for chunk in re.findall(r"(?is)<select\b[^>]*>.*?</select>", html):
+        choices = extract_option_choices(chunk)
+        if choices:
+            groups.append({"name": extract_option_name(chunk), "choices": choices, "fallback": True})
     for fieldset in re.findall(r"(?is)<fieldset\b[^>]*>.*?</fieldset>", html):
-        label = extract_legend(fieldset) or extract_label(fieldset) or "option"
-        values = extract_values(fieldset)
-        if values:
-            variants.append({"title": label, "price": "", "available": True, "source": "standard_fieldset", "values": values})
-    return variants[:80]
+        choices = extract_option_choices(fieldset)
+        name = extract_option_name(fieldset)
+        if choices and name:
+            groups.append({"name": name, "choices": choices, "fallback": False})
+    # Product pages often retain a no-JavaScript `select name="id"` containing
+    # every combination. Prefer named option controls when they are available.
+    if any(group.get("name") for group in groups):
+        groups = [group for group in groups if group.get("name")]
+    return expand_option_groups(merge_option_groups(groups))
+
+
+def extract_option_name(html):
+    legend = clean_option_name(extract_legend(html))
+    if legend:
+        return legend
+    for attribute in ("data-option-name", "data-option", "data-name", "name", "aria-label"):
+        match = re.search(attribute + r'=["\']([^"\']+)["\']', html, flags=re.I)
+        if match:
+            name = clean_option_name(match.group(1))
+            if name:
+                return name
+    return ""
+
+
+def clean_option_name(value):
+    text = strip_html(unescape(value or "")).strip()
+    lowered = text.casefold()
+    if re.match(r"^properties\[[^\]]+\]$", text, flags=re.I) or any(
+        token in lowered for token in ("language", "语言", "translate", "translation", "currency", "货币")
+    ):
+        return ""
+    prefix = re.match(r"^\s*([A-Za-z][A-Za-z0-9 _-]{0,60}|[\u4e00-\u9fff]{1,20})\s*[:：]", text)
+    if prefix:
+        return prefix.group(1).strip()
+    bracketed = re.search(r"(?:option|options)\[([^\]]+)\]", text, flags=re.I)
+    if bracketed:
+        text = bracketed.group(1).strip()
+    if not text or any(token in text.lower() for token in ("${", "function", "=>", "data.origindata", "option.name")):
+        return ""
+    if text.lower() in {"id", "option", "options", "variant", "variants", "ymq", "customily", "teeinblue"}:
+        return ""
+    return text if len(text) <= 80 else ""
+
+
+def extract_option_choices(html):
+    choices = []
+
+    def add_choice(value, available=True):
+        text = strip_html(unescape(value or "")).strip()
+        is_available = available and not bool(re.search(r"(?:sold\s*out|out\s*of\s*stock|unavailable|售罄|缺货)", text, flags=re.I))
+        text = re.sub(r"\s*(?:[-–—·|/]\s*)?(?:sold\s*out|out\s*of\s*stock|unavailable|售罄|缺货)\s*$", "", text, flags=re.I).strip()
+        if not text or len(text) > 120 or re.fullmatch(r"\d{7,}", text):
+            return
+        if any(token in text.lower() for token in ("${", "function", "=>", "data.origindata", "option.name")):
+            return
+        key = text.casefold()
+        for choice in choices:
+            if choice["value"].casefold() == key:
+                choice["available"] = choice["available"] or is_available
+                return
+        choices.append({"value": text, "available": is_available})
+
+    for option in re.findall(r"(?is)<option\b[^>]*>(.*?)</option>", html):
+        add_choice(option)
+    for label in re.findall(r"(?is)<label\b[^>]*>(.*?)</label>", html):
+        add_choice(label)
+    for tag in re.findall(r"(?is)<input\b[^>]*>", html):
+        type_match = re.search(r'type=["\']([^"\']+)["\']', tag, flags=re.I)
+        value_match = re.search(r'value=["\']([^"\']+)["\']', tag, flags=re.I)
+        if type_match and value_match and type_match.group(1).lower() in {"radio", "checkbox"}:
+            add_choice(value_match.group(1), available="disabled" not in tag.lower())
+    return choices[:40]
+
+
+def merge_option_groups(groups):
+    merged = []
+    by_name = {}
+    for group in groups:
+        name = group.get("name") or ("Variant" if not merged else f"Option {len(merged) + 1}")
+        key = name.casefold()
+        if key not in by_name:
+            item = {"name": name, "choices": []}
+            by_name[key] = item
+            merged.append(item)
+        target = by_name[key]
+        for choice in group.get("choices") or []:
+            existing = next((item for item in target["choices"] if item["value"].casefold() == choice["value"].casefold()), None)
+            if existing:
+                existing["available"] = existing["available"] or choice["available"]
+            else:
+                target["choices"].append(choice)
+    return merged[:3]
+
+
+def expand_option_groups(groups):
+    if not groups or any(not group["choices"] for group in groups):
+        return []
+    variants = []
+    for combination in itertools.islice(itertools.product(*(group["choices"] for group in groups)), 160):
+        option_values = {group["name"]: choice["value"] for group, choice in zip(groups, combination)}
+        variants.append(
+            {
+                "title": " / ".join(option_values.values()),
+                "price": "",
+                "available": all(choice["available"] for choice in combination),
+                "source": "standard_options",
+                "option_values": option_values,
+            }
+        )
+    return variants
 
 
 def parse_plugin_variants(html):

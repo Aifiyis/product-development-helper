@@ -16,22 +16,10 @@
             用户管理
         </a>
         {% endif %}
-        {% if current_user.can("hashtag.view") %}
-        <a class="nav-link {% if request.path.startswith('/hashtag-discovery') %}active{% endif %}" href="{{ url_for('hashtag_discovery.index') }}">
-            <i class="bi bi-hash"></i>
-            热门标签发现
-        </a>
-        {% endif %}
-        {% if current_user.can("product_extension.view") %}
-        <a class="nav-link {% if request.path.startswith('/product-extension') %}active{% endif %}" href="{{ url_for('product_extension.index') }}">
-            <i class="bi bi-stars"></i>
-            产品扩展
-        </a>
-        {% endif %}
-        {% if current_user.can("trends.view") %}
-        <a class="nav-link {% if request.path.startswith('/trends') %}active{% endif %}" href="{{ url_for('dashboard.trends') }}">
-            <i class="bi bi-graph-up-arrow"></i>
-            产品趋势库
+        {% if current_user.can("stores.view") %}
+        <a class="nav-link {% if request.path.startswith('/product-workflow/stores') %}active{% endif %}" href="{{ url_for('product_workflow.stores') }}">
+            <i class="bi bi-shop"></i>
+            店铺管理
         </a>
         {% endif %}
         {% if current_user.can("competitor.view") %}
@@ -46,16 +34,28 @@
             产品认领箱
         </a>
         {% endif %}
-        {% if current_user.can("stores.view") %}
-        <a class="nav-link {% if request.path.startswith('/product-workflow/stores') %}active{% endif %}" href="{{ url_for('product_workflow.stores') }}">
-            <i class="bi bi-shop"></i>
-            店铺管理
+        {% if current_user.can("product_extension.view") %}
+        <a class="nav-link {% if request.path.startswith('/product-extension') %}active{% endif %}" href="{{ url_for('product_extension.index') }}">
+            <i class="bi bi-stars"></i>
+            产品扩展
+        </a>
+        {% endif %}
+        {% if current_user.can("hashtag.view") %}
+        <a class="nav-link {% if request.path.startswith('/hashtag-discovery') %}active{% endif %}" href="{{ url_for('hashtag_discovery.index') }}">
+            <i class="bi bi-hash"></i>
+            热门标签发现
         </a>
         {% endif %}
         {% if current_user.can("platform_collection.view") %}
         <a class="nav-link {% if request.path.startswith('/collection/platform') %}active{% endif %}" href="{{ url_for('xiaohongshu.index') }}">
             <i class="bi bi-journal-text"></i>
-            平台采集
+            社媒监控
+        </a>
+        {% endif %}
+        {% if current_user.can("trends.view") %}
+        <a class="nav-link {% if request.path.startswith('/trends') %}active{% endif %}" href="{{ url_for('dashboard.trends') }}">
+            <i class="bi bi-graph-up-arrow"></i>
+            产品趋势库
         </a>
         {% endif %}
     </nav>

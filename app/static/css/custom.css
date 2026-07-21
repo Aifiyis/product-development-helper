@@ -314,6 +314,34 @@ body {
     overflow-wrap: anywhere;
 }
 
+.task-sites-disclosure {
+    max-width: 360px;
+}
+
+.task-sites-disclosure summary {
+    max-width: 360px;
+    overflow: hidden;
+    color: #2463a8;
+    cursor: pointer;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.task-sites-disclosure[open] summary {
+    overflow-wrap: anywhere;
+    white-space: normal;
+}
+
+.task-sites-disclosure > div {
+    max-height: 180px;
+    margin-top: 8px;
+    padding: 8px;
+    overflow-y: auto;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    background: #f8fafc;
+    overflow-wrap: anywhere;
+}
 .task-error-toggle {
     padding: 0;
     font-size: 12px;

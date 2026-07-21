@@ -12,7 +12,7 @@ from app.services.scheduler_service import register_task_job
 
 bp = Blueprint("xiaohongshu", __name__, url_prefix="/collection/platform")
 PLATFORM = "platform"
-PLATFORM_LABEL = "平台采集"
+PLATFORM_LABEL = "社媒监控"
 PLATFORM_CHOICES = [
     ("xiaohongshu", "小红书"),
     ("douyin", "抖音"),

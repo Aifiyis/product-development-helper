@@ -79,6 +79,14 @@
                 <td>{{ item.source_domain }}</td>
                 <td>{{ item.moved_at.strftime("%Y-%m-%d %H:%M") }}</td>
                 <td class="text-end">
+                    {% if current_user.can("product_inbox.edit") %}
+                    <a class="btn btn-sm btn-outline-primary" href="{{ url_for('product_workflow.edit_inbox_item', item_id=item.id) }}">编辑</a>
+                    {% endif %}
+                    {% if current_user.can("product_inbox.move") %}
+                    <form class="inline-form" method="post" action="{{ url_for('product_workflow.remove_from_inbox', item_id=item.id) }}">
+                        <button class="btn btn-sm btn-outline-danger" type="submit">移出认领箱</button>
+                    </form>
+                    {% endif %}
                     {% if current_user.can("product_inbox.claim") %}
                     <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#claimModal{{ item.id }}">认领</button>
                     {% endif %}

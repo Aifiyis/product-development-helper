@@ -1,3 +1,4 @@
+import io
 import json
 import unittest
 import uuid
@@ -192,6 +193,103 @@ class ProductWorkflowTest(unittest.TestCase):
         self.assertIn("Product Developer", page)
         self.assertIn("Liu XiaoJie", page)
 
+    def test_unclaimed_item_can_be_edited_with_variant_image_before_claim(self):
+        item_id = self.move_product(self.create_product())
+        with self.app.app_context():
+            item = db.session.get(ProductInboxItem, item_id)
+            variant_id = item.variants[0].id
+
+        inbox_page = self.client.get("/product-workflow/inbox?tab=unclaimed").get_data(as_text=True)
+        self.assertIn(f'/product-workflow/inbox/{item_id}/edit', inbox_page)
+        editor_page = self.client.get(f"/product-workflow/inbox/{item_id}/edit").get_data(as_text=True)
+        self.assertIn("认领前编辑", editor_page)
+        script_response = self.client.get("/static/js/app.js")
+        editor_script = script_response.get_data(as_text=True)
+        script_response.close()
+        self.assertIn("data-variant-image-input", editor_script)
+        self.assertIn("editorHistory", editor_script)
+        self.assertNotIn("Product metafields", editor_page)
+
+        with patch(
+            "app.blueprints.product_workflow.routes._save_upload",
+            return_value=("https://public.test/variant-black.jpg", "inbox/variant-black.jpg"),
+        ):
+            response = self.client.post(
+                f"/product-workflow/inbox/{item_id}/edit",
+                data={
+                    "title": "Edited before claim",
+                    "product_type": "Apparel",
+                    "tags": "edited, shirt",
+                    "description_html": "<p>Edited description</p><script>bad()</script>",
+                    "options_json": json.dumps([{"name": "Color", "values": ["Black"]}]),
+                    "variant_count": "1",
+                    "variant_id-0": str(variant_id),
+                    "variant_options-0": json.dumps({"Color": "Black"}),
+                    "variant_sku-0": "EDITED-BLACK",
+                    "variant_price-0": "35.00",
+                    "variant_compare_at-0": "45.00",
+                    "variant_inventory-0": "12",
+                    "variant_weight-0": "0.45",
+                    "variant_length-0": "30",
+                    "variant_width-0": "20",
+                    "variant_height-0": "4",
+                    "variant_image-0": (io.BytesIO(b"fake-image"), "black.jpg"),
+                },
+                content_type="multipart/form-data",
+            )
+        self.assertEqual(response.status_code, 302)
+
+        with self.app.app_context():
+            item = db.session.get(ProductInboxItem, item_id)
+            self.assertEqual(item.title, "Edited before claim")
+            self.assertEqual(item.options, [{"name": "Color", "values": ["Black"]}])
+            self.assertEqual(len(item.variants), 1)
+            self.assertEqual(item.variants[0].sku, "EDITED-BLACK")
+            self.assertEqual(item.variants[0].image_url, "https://public.test/variant-black.jpg")
+            self.assertEqual(item.variants[0].local_image_path, "inbox/variant-black.jpg")
+            self.assertNotIn("<script", item.description_html)
+
+        store_id = self.create_store()
+        self.claim(item_id, [store_id])
+        with self.app.app_context():
+            draft = StoreProductDraft.query.one()
+            self.assertEqual(draft.title, "Edited before claim")
+            self.assertEqual(draft.options, [{"name": "Color", "values": ["Black"]}])
+            self.assertEqual(draft.variants[0].sku, "EDITED-BLACK")
+            self.assertEqual(draft.variants[0].local_image_path, "inbox/variant-black.jpg")
+
+    def test_unclaimed_product_can_be_removed_but_claimed_product_is_protected(self):
+        first_product_id = self.create_product("Removable product")
+        first_item_id = self.move_product(first_product_id)
+        scrape_page = self.client.get("/competitor").get_data(as_text=True)
+        self.assertIn(f"/product-workflow/inbox/{first_item_id}/remove", scrape_page)
+        response = self.client.post(f"/product-workflow/inbox/{first_item_id}/remove")
+        self.assertEqual(response.status_code, 302)
+        with self.app.app_context():
+            self.assertIsNone(db.session.get(ProductInboxItem, first_item_id))
+
+        second_product_id = self.create_product("Claimed product")
+        second_item_id = self.move_product(second_product_id)
+        store_id = self.create_store()
+        self.claim(second_item_id, [store_id])
+        response = self.client.post(f"/product-workflow/inbox/{second_item_id}/remove")
+        self.assertEqual(response.status_code, 302)
+        with self.app.app_context():
+            self.assertIsNotNone(db.session.get(ProductInboxItem, second_item_id))
+            self.assertEqual(StoreProductDraft.query.count(), 1)
+    def test_navigation_order_and_product_scrape_toolbar(self):
+        dashboard = self.client.get("/dashboard").get_data(as_text=True)
+        labels = [
+            "中控台", "用户管理", "店铺管理", "产品抓取", "产品认领箱",
+            "产品扩展", "热门标签发现", "社媒监控", "产品趋势库",
+        ]
+        positions = [dashboard.index(label) for label in labels]
+        self.assertEqual(positions, sorted(positions))
+        self.assertNotIn("平台采集", dashboard)
+
+        scrape_page = self.client.get("/competitor").get_data(as_text=True)
+        self.assertNotIn('class="btn btn-outline-warning" href="/product-workflow/inbox"', scrape_page)
+        self.assertIn("移入产品认领箱", scrape_page)
     def test_shopify_create_update_draft_and_publish_use_same_remote_product(self):
         item_id = self.move_product(self.create_product())
         store_id = self.create_store()

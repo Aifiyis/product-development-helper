@@ -11,13 +11,20 @@
 <form method="post" enctype="multipart/form-data" class="product-editor-form" data-product-editor>
     <header class="editor-action-bar">
         <div>
-            <a href="{{ url_for('product_workflow.inbox', tab='claimed') }}" class="btn btn-light btn-sm"><i class="bi bi-arrow-left"></i></a>
+            <a href="{{ url_for('product_workflow.inbox', tab='unclaimed' if is_inbox_editor else 'claimed') }}" class="btn btn-light btn-sm"><i class="bi bi-arrow-left"></i></a>
+            {% if is_inbox_editor %}
+            <strong>未认领产品</strong>
+            <span class="badge text-bg-light">认领前编辑</span>
+            {% else %}
             <strong>{{ draft.store.name }}</strong>
             <span class="badge text-bg-light">{{ draft.store.platform_label }}</span>
             <span class="badge text-bg-{{ draft.status_badge }}">{{ draft.status_label }}</span>
+            {% endif %}
+            <small class="text-muted ms-2">Ctrl+Z 可撤回编辑</small>
         </div>
         <div class="toolbar">
             <button class="btn btn-outline-primary" type="submit" name="after_save" value="save">保存</button>
+            {% if not is_inbox_editor %}
             {% if not draft.remote_published and current_user.can("product_inbox.create_draft") %}
             <button class="btn btn-outline-warning" type="submit" name="after_save" value="draft">
                 {{ "更新店铺草稿" if draft.remote_product_id else "移入待发布" }}
@@ -28,17 +35,18 @@
                 {{ "更新发布" if draft.remote_published else "发布" }}
             </button>
             {% endif %}
+            {% endif %}
         </div>
     </header>
 
     <section class="editor-card">
-        <div class="editor-card-header"><h3>基本信息</h3><span>各字段只影响当前目标店铺</span></div>
+        <div class="editor-card-header"><h3>基本信息</h3><span>{{ "认领后将复制到所选店铺" if is_inbox_editor else "各字段只影响当前目标店铺" }}</span></div>
         <div class="editor-card-body editor-fields">
             <div class="editor-field-wide">
                 <label class="form-label">来源 URL</label>
                 <div class="input-group">
-                    <input class="form-control" value="{{ draft.inbox_item.source_url or '' }}" readonly>
-                    {% if draft.inbox_item.source_url %}<a class="btn btn-outline-secondary" href="{{ draft.inbox_item.source_url }}" target="_blank" rel="noreferrer">访问</a>{% endif %}
+                    <input class="form-control" value="{{ editor_source_url or '' }}" readonly>
+                    {% if editor_source_url %}<a class="btn btn-outline-secondary" href="{{ editor_source_url }}" target="_blank" rel="noreferrer">访问</a>{% endif %}
                 </div>
             </div>
             <div>
@@ -59,6 +67,7 @@
         </div>
     </section>
 
+    {% if not is_inbox_editor %}
     <section class="editor-card">
         <div class="editor-card-header">
             <h3>Product metafields</h3>
@@ -79,6 +88,7 @@
             {% endfor %}
         </div>
     </section>
+    {% endif %}
     <section class="editor-card">
         <div class="editor-card-header"><h3>产品图片</h3><span>第一张图片作为主图；支持上传、删除和排序，不提供图片编辑。</span></div>
         <div class="editor-card-body">

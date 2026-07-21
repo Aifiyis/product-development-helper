@@ -39,9 +39,7 @@
                 <button class="btn btn-warning" type="submit" data-move-selected disabled><i class="bi bi-inboxes"></i> 移入产品认领箱</button>
             </form>
             {% endif %}
-            {% if current_user.can("product_inbox.view") %}
-            <a class="btn btn-outline-warning" href="{{ url_for('product_workflow.inbox') }}">产品认领箱</a>
-            {% endif %}
+
         </div>
     </div>
 
@@ -65,10 +63,33 @@
                 <tbody data-competitor-task-body>
                 {% for task in tasks %}
                 <tr data-task-row="{{ task.id }}">
-                    <td>{{ "链接采集" if task.is_product_link_collection else (categories.get(task.target_category, task.target_category) if task.target_category else "不限") }}</td>
-                    <td class="task-sites">{{ (task.product_url_list if task.is_product_link_collection else task.site_list)|join(", ") }}</td>
-                    <td>{{ "-" if task.is_product_link_collection else (task.product_keywords or "-") }}</td>
-                    <td>{{ "逐链接采集 · " ~ task.product_url_list|length ~ " 条" if task.is_product_link_collection else task.products_per_site ~ " 条/站 · " ~ ("最新上架" if task.sort_mode == "newest" else "销量排名") }}</td>
+                    {% if task.is_product_link_collection %}
+                    {% set task_targets = task.product_url_list %}
+                    {% set task_label = "链接采集" %}
+                    {% set task_keywords = "-" %}
+                    {% set task_condition = "逐链接采集 · " ~ task_targets|length ~ " 条" %}
+                    {% elif task.is_category_collection %}
+                    {% set task_targets = [task.category_url] if task.category_url else [] %}
+                    {% set task_label = "分类采集" %}
+                    {% set task_keywords = "-" %}
+                    {% set task_condition = "分类下全部产品" if task.category_scope == "all" else "分类前 " ~ task.category_page_count ~ " 页" %}
+                    {% else %}
+                    {% set task_targets = task.site_list %}
+                    {% set task_label = categories.get(task.target_category, task.target_category) if task.target_category else "不限" %}
+                    {% set task_keywords = task.product_keywords or "-" %}
+                    {% set task_condition = task.products_per_site ~ " 条/站 · " ~ ("最新上架" if task.sort_mode == "newest" else "销量排名") %}
+                    {% endif %}
+                    <td>{{ task_label }}</td>
+                    <td>
+                        {% if task_targets %}
+                        <details class="task-sites-disclosure">
+                            <summary>{{ task_targets[0] }}{% if task_targets|length > 1 %} 等 {{ task_targets|length }} 项{% endif %}</summary>
+                            <div>{% for target in task_targets %}<div>{{ target }}</div>{% endfor %}</div>
+                        </details>
+                        {% else %}-{% endif %}
+                    </td>
+                    <td>{{ task_keywords }}</td>
+                    <td>{{ task_condition }}</td>
                     <td>{{ "即时" if task.collection_cycle == "instant" else task.collection_cycle }}</td>
                     <td>
                         <span class="badge text-bg-{{ task.status_badge }}" data-task-status="{{ task.id }}">{{ task.status_label }}</span>
@@ -156,6 +177,7 @@
                     <div class="product-thumb product-thumb-empty"><i class="bi bi-image"></i></div>
                     {% endif %}
                 </td>
+                {% set inbox_item = inbox_items_by_product_id.get(product.id) %}
                 <td>{{ product.source_domain }}</td>
                 <td class="title-cell">{{ product.title or "未命名产品" }}</td>
                 <td>{{ product.price or "-" }}</td>
@@ -164,8 +186,15 @@
                 <td>{{ product.fb_ad_count if product.fb_ad_count is not none else "-" }}</td>
                 <td>{{ product.collected_at.strftime("%Y-%m-%d %H:%M") }}</td>
                 <td class="text-end">
-                    {% if product.id in inbox_product_ids %}
+                    {% if inbox_item %}
                     <span class="badge text-bg-success">已移入认领箱</span>
+                    {% if current_user.can("product_inbox.move") and not inbox_item.is_claimed %}
+                    <form class="inline-form" method="post" action="{{ url_for('product_workflow.remove_from_inbox', item_id=inbox_item.id) }}">
+                        <button class="btn btn-sm btn-outline-danger" type="submit">移出认领箱</button>
+                    </form>
+                    {% elif inbox_item.is_claimed %}
+                    <span class="badge text-bg-secondary">已认领，不可移出</span>
+                    {% endif %}
                     {% elif current_user.can("product_inbox.move") %}
                     <form class="inline-form" method="post" action="{{ url_for('product_workflow.move_to_inbox') }}">
                         <input type="hidden" name="product_id" value="{{ product.id }}">

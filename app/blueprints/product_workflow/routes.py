@@ -116,6 +116,48 @@ def move_to_inbox():
     return redirect(request.referrer or url_for("competitor.index"))
 
 
+@bp.post("/inbox/<int:item_id>/remove")
+@login_required
+@permission_required("product_inbox.move")
+def remove_from_inbox(item_id):
+    item = db.get_or_404(ProductInboxItem, item_id)
+    if item.store_drafts:
+        flash("该产品已认领到店铺，不能直接移出认领箱。", "warning")
+        return redirect(request.referrer or url_for("product_workflow.inbox", tab="claimed"))
+    db.session.delete(item)
+    db.session.commit()
+    flash("产品已移出认领箱，可再次从产品抓取页面移入。", "success")
+    return redirect(request.referrer or url_for("product_workflow.inbox", tab="unclaimed"))
+
+@bp.route("/inbox/<int:item_id>/edit", methods=["GET", "POST"])
+@login_required
+@permission_required("product_inbox.edit")
+def edit_inbox_item(item_id):
+    item = db.get_or_404(ProductInboxItem, item_id)
+    if item.is_claimed:
+        flash("该产品已被认领，请编辑对应店铺商品副本。", "warning")
+        return redirect(url_for("product_workflow.inbox", tab="claimed"))
+    if request.method == "POST":
+        try:
+            _update_inbox_item_from_form(item)
+            db.session.commit()
+        except ValueError as exc:
+            db.session.rollback()
+            flash(str(exc), "danger")
+            return redirect(url_for("product_workflow.edit_inbox_item", item_id=item.id))
+        flash("未认领产品已保存。", "success")
+        return redirect(url_for("product_workflow.edit_inbox_item", item_id=item.id))
+
+    return render_template(
+        "product_workflow/editor.html",
+        page_title="编辑未认领产品",
+        draft=item,
+        editor_source_url=item.source_url,
+        editor_variants=[_variant_for_editor(variant) for variant in item.variants],
+        product_metafield_definitions=[],
+        is_inbox_editor=True,
+    )
+
 @bp.post("/inbox/<int:item_id>/claim")
 @login_required
 @permission_required("product_inbox.claim")
@@ -171,6 +213,8 @@ def edit_draft(draft_id):
         "product_workflow/editor.html",
         page_title="编辑店铺商品",
         draft=draft,
+        editor_source_url=draft.inbox_item.source_url,
+        is_inbox_editor=False,
         editor_variants=[_variant_for_editor(item) for item in draft.variants],
         product_metafield_definitions=PRODUCT_METAFIELD_DEFINITIONS,
 
@@ -383,11 +427,12 @@ def _create_inbox_snapshot(product):
             weight_kg=_decimal(raw.get("weight_kg")),
             position=position,
         ))
+    item.options_json = json.dumps(_derive_options(item.variants), ensure_ascii=False)
     return item
 
 
 def _create_store_draft(item, store):
-    options = _derive_options(item.variants)
+    options = item.options
     draft = StoreProductDraft(
         inbox_item=item,
         store=store,
@@ -403,6 +448,7 @@ def _create_store_draft(item, store):
         draft.images.append(DraftProductImage(
             source_url=image.source_url,
             public_url=image.source_url,
+            local_path=image.local_path,
             alt_text=image.alt_text,
             position=image.position,
         ))
@@ -414,6 +460,7 @@ def _create_store_draft(item, store):
             compare_at_price=variant.compare_at_price,
             inventory_quantity=variant.inventory_quantity,
             image_url=variant.image_url,
+            local_image_path=variant.local_image_path,
             weight_kg=variant.weight_kg,
             package_length_cm=variant.package_length_cm,
             package_width_cm=variant.package_width_cm,
@@ -422,6 +469,68 @@ def _create_store_draft(item, store):
         ))
     return draft
 
+
+def _update_inbox_item_from_form(item):
+    item.title = request.form.get("title", "").strip()
+    item.product_type = request.form.get("product_type", "").strip()
+    item.description_html = _sanitize_html(request.form.get("description_html", ""))
+    tags = [value.strip() for value in request.form.get("tags", "").split(",") if value.strip()]
+    item.tags_json = json.dumps(tags, ensure_ascii=False)
+    options = _json_value(request.form.get("options_json"), [])
+    item.options_json = json.dumps([
+        {"name": str(option.get("name") or "").strip(), "values": [
+            str(value).strip() for value in option.get("values") or [] if str(value).strip()
+        ]}
+        for option in options if isinstance(option, dict) and str(option.get("name") or "").strip()
+    ], ensure_ascii=False)
+
+    existing_variants = {variant.id: variant for variant in item.variants}
+    retained_ids = set()
+    count = _integer(request.form.get("variant_count"), 0)
+    for index in range(count):
+        variant_id = _integer(request.form.get(f"variant_id-{index}"), 0)
+        variant = existing_variants.get(variant_id) or InboxVariant(item=item)
+        if variant.id:
+            retained_ids.add(variant.id)
+        variant.option_values_json = json.dumps(
+            _json_value(request.form.get(f"variant_options-{index}"), {}), ensure_ascii=False
+        )
+        variant.sku = request.form.get(f"variant_sku-{index}", "").strip()
+        variant.price = _decimal(request.form.get(f"variant_price-{index}"))
+        variant.compare_at_price = _decimal(request.form.get(f"variant_compare_at-{index}"))
+        variant.inventory_quantity = _integer(request.form.get(f"variant_inventory-{index}"), 0)
+        variant.weight_kg = _decimal(request.form.get(f"variant_weight-{index}"))
+        variant.package_length_cm = _decimal(request.form.get(f"variant_length-{index}"))
+        variant.package_width_cm = _decimal(request.form.get(f"variant_width-{index}"))
+        variant.package_height_cm = _decimal(request.form.get(f"variant_height-{index}"))
+        variant.position = index
+        upload = request.files.get(f"variant_image-{index}")
+        if upload and upload.filename:
+            public_url, local_path = _save_upload(f"inbox-{item.id}", upload)
+            variant.image_url = public_url
+            variant.local_image_path = local_path
+    for variant_id, variant in existing_variants.items():
+        if variant_id not in retained_ids:
+            db.session.delete(variant)
+
+    for image in list(item.images):
+        if request.form.get(f"remove_image-{image.id}") == "1":
+            db.session.delete(image)
+            continue
+        image.position = _integer(request.form.get(f"image_position-{image.id}"), image.position)
+        image.alt_text = request.form.get(f"image_alt-{image.id}", image.alt_text or "").strip()
+    next_position = max([image.position for image in item.images] + [-1]) + 1
+    for upload in request.files.getlist("product_images"):
+        if not upload or not upload.filename:
+            continue
+        public_url, local_path = _save_upload(f"inbox-{item.id}", upload)
+        item.images.append(InboxProductImage(
+            source_url=public_url,
+            local_path=local_path,
+            alt_text=item.title,
+            position=next_position,
+        ))
+        next_position += 1
 
 def _update_draft_from_form(draft):
     draft.title = request.form.get("title", "").strip()

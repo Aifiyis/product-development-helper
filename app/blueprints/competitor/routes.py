@@ -20,6 +20,10 @@ PLATFORM_LABELS = {
     "shopify": "Shopify",
     "shopline": "Shopline",
     "shoplazza": "Shoplazza",
+    "etsy": "Etsy",
+    "shein": "SHEIN",
+    "1688": "1688",
+    "amazon": "Amazon",
     "custom": "自建站",
     "unknown": "未知",
 }
@@ -60,11 +64,9 @@ def index():
         request.args.get("direction"),
     )
     products = CompetitorProduct.query.order_by(*product_ordering).limit(200).all()
-    inbox_product_ids = {
-        source_id for (source_id,) in db.session.query(ProductInboxItem.source_product_id).filter(
-            ProductInboxItem.source_product_id.isnot(None)
-        ).all()
-    }
+    inbox_items = ProductInboxItem.query.filter(ProductInboxItem.source_product_id.isnot(None)).all()
+    inbox_items_by_product_id = {item.source_product_id: item for item in inbox_items}
+    inbox_product_ids = set(inbox_items_by_product_id)
     return render_template(
         "competitor/index.html",
         page_title="产品抓取",
@@ -73,6 +75,7 @@ def index():
         platform_labels=PLATFORM_LABELS,
         tasks=tasks,
         inbox_product_ids=inbox_product_ids,
+        inbox_items_by_product_id=inbox_items_by_product_id,
         products=products,
         product_sort=product_sort,
         product_sort_direction=product_sort_direction,
@@ -84,28 +87,61 @@ def index():
 @permission_required("competitor.create_task")
 def create_task():
     collection_mode = request.form.get("collection_mode", "competitor_sites")
-    if collection_mode not in {"competitor_sites", "product_links"}:
+    if collection_mode not in {"competitor_sites", "product_links", "category"}:
         collection_mode = "competitor_sites"
 
     sites = request.form.getlist("target_sites") if collection_mode == "competitor_sites" else []
     if not sites and collection_mode == "competitor_sites":
         sites = [request.form.get("target_sites", "")]
     product_urls = parse_product_urls(request.form.get("product_urls", "")) if collection_mode == "product_links" else []
+    category_url = request.form.get("category_url", "").strip() if collection_mode == "category" else ""
+
+    if collection_mode == "product_links":
+        category_urls = [url for url in product_urls if is_collection_url(url)]
+        if category_urls:
+            if len(product_urls) != 1:
+                return task_request_error("分类采集每个任务只能填写一个分类网址，请与产品链接分开创建。")
+            collection_mode = "category"
+            category_url = category_urls[0]
+            product_urls = []
+
     if collection_mode == "competitor_sites" and not any(site.strip() for site in sites):
         return task_request_error("请至少选择一个目标网站。")
     if collection_mode == "product_links" and not product_urls:
         return task_request_error("请填写至少一个有效的产品网址（以 http:// 或 https:// 开头）。")
+    if collection_mode == "category" and not is_valid_url(category_url):
+        return task_request_error("请填写一个有效的店铺分类网址（以 http:// 或 https:// 开头）。")
+
+    category_scope = request.form.get("category_scope", "pages")
+    if category_scope not in {"all", "pages"}:
+        category_scope = "pages"
+    try:
+        category_page_count = max(1, min(int(request.form.get("category_page_count") or 1), 100))
+    except (TypeError, ValueError):
+        category_page_count = 1
+    try:
+        products_per_site = max(1, min(int(request.form.get("products_per_site") or 20), 250))
+    except (TypeError, ValueError):
+        products_per_site = 20
+    collection_cycle = request.form.get("collection_cycle", "instant")
+    if collection_cycle not in {"instant", "30m", "1h", "6h", "12h", "1d"}:
+        collection_cycle = "instant"
+    if collection_mode == "product_links":
+        collection_cycle = "instant"
 
     task = CompetitorTask(
-        target_sites=",".join(site for site in sites if site),
+        target_sites=",".join(site for site in sites if site) if collection_mode == "competitor_sites" else "",
         collection_mode=collection_mode,
         product_urls="\n".join(product_urls),
+        category_url=category_url if collection_mode == "category" else "",
+        category_scope=category_scope,
+        category_page_count=category_page_count,
         target_category=request.form.get("target_category", "") if collection_mode == "competitor_sites" else "",
         product_keywords=request.form.get("product_keywords", "").strip() if collection_mode == "competitor_sites" else "",
-        sort_mode=request.form.get("sort_mode", "best_selling"),
-        products_per_site=int(request.form.get("products_per_site") or 20),
+        sort_mode=request.form.get("sort_mode", "best_selling") if collection_mode == "competitor_sites" else "best_selling",
+        products_per_site=products_per_site,
         fb_ad_threshold=0,
-        collection_cycle=request.form.get("collection_cycle", "instant"),
+        collection_cycle=collection_cycle,
         status="collecting",
         created_by=current_user.id,
     )
@@ -154,21 +190,34 @@ def task_status(task_id):
 
 
 def serialize_task(task, categories):
-    is_link_collection = task.is_product_link_collection
+    if task.is_product_link_collection:
+        category_label = "链接采集"
+        sites = task.product_url_list
+        product_keywords = "-"
+        condition = f"逐链接采集 · {len(sites)} 条"
+    elif task.is_category_collection:
+        category_label = "分类采集"
+        sites = [task.category_url] if task.category_url else []
+        product_keywords = "-"
+        condition = "分类下全部产品" if task.category_scope == "all" else f"分类前 {task.category_page_count} 页"
+    else:
+        category_label = categories.get(task.target_category, task.target_category) if task.target_category else "不限"
+        sites = task.site_list
+        product_keywords = task.product_keywords or "-"
+        condition = f'{task.products_per_site} 条/站 · {"最新上架" if task.sort_mode == "newest" else "销量排名"}'
     return {
         "id": task.id,
         "collection_mode": task.collection_mode,
-        "category_label": "链接采集" if is_link_collection else (categories.get(task.target_category, task.target_category) if task.target_category else "不限"),
-        "sites": task.product_url_list if is_link_collection else task.site_list,
-        "product_keywords": "-" if is_link_collection else (task.product_keywords or "-"),
-        "condition": f"逐链接采集 · {len(task.product_url_list)} 条" if is_link_collection else f'{task.products_per_site} 条/站 · {"最新上架" if task.sort_mode == "newest" else "销量排名"}',
+        "category_label": category_label,
+        "sites": sites,
+        "product_keywords": product_keywords,
+        "condition": condition,
         "cycle_label": "即时" if task.collection_cycle == "instant" else task.collection_cycle,
         "collection_cycle": task.collection_cycle,
         "status": task.status,
         "status_label": task.status_label,
         "status_badge": task.status_badge,
     }
-
 
 @bp.post("/tasks/<int:task_id>/pause")
 @login_required
@@ -209,8 +258,12 @@ def product_detail(product_id):
             "id": product.id,
             "source_domain": product.source_domain,
             "source_type": product.source_type,
+            "platform": product.platform or "unknown",
+            "platform_label": PLATFORM_LABELS.get(product.platform or "unknown", product.platform or "未知"),
             "title": product.title,
             "price": product.price,
+            "previous_price": product.previous_price,
+            "previous_collected_at": product.previous_collected_at.strftime("%Y-%m-%d %H:%M") if product.previous_collected_at else "",
             "product_created_at": product.product_created_at.strftime("%Y-%m-%d %H:%M") if product.product_created_at else "",
             "product_tags": json.loads(product.product_tags or "[]"),
             "product_media": json.loads(product.product_media or "{}"),
@@ -303,6 +356,17 @@ def parse_product_urls(raw_urls):
             urls.append(url)
     return urls
 
+
+def is_valid_url(value):
+    parsed = urlparse((value or "").strip())
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+def is_collection_url(value):
+    if not is_valid_url(value):
+        return False
+    path = urlparse(value).path.lower().rstrip("/")
+    return path == "/collections" or path.startswith("/collections/")
 
 def task_request_error(message):
     if request.headers.get("X-Requested-With") == "XMLHttpRequest":

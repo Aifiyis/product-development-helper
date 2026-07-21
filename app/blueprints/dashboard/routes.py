@@ -46,7 +46,7 @@ def index():
             "permission": "competitor.view",
         },
         {
-            "title": "平台采集",
+            "title": "社媒监控",
             "description": "按平台监控内容与评论触发词",
             "tag": "内容采集",
             "icon": "bi-card-image",

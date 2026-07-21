@@ -125,6 +125,15 @@ def ensure_schema_columns():
     if "product_urls" not in competitor_columns:
         db.session.execute(text("ALTER TABLE competitor_tasks ADD COLUMN product_urls TEXT"))
         db.session.commit()
+    if "category_url" not in competitor_columns:
+        db.session.execute(text("ALTER TABLE competitor_tasks ADD COLUMN category_url VARCHAR(1000)"))
+        db.session.commit()
+    if "category_scope" not in competitor_columns:
+        db.session.execute(text("ALTER TABLE competitor_tasks ADD COLUMN category_scope VARCHAR(20) DEFAULT 'pages'"))
+        db.session.commit()
+    if "category_page_count" not in competitor_columns:
+        db.session.execute(text("ALTER TABLE competitor_tasks ADD COLUMN category_page_count INTEGER DEFAULT 1"))
+        db.session.commit()
     if "product_keywords" not in competitor_columns:
         db.session.execute(text("ALTER TABLE competitor_tasks ADD COLUMN product_keywords TEXT"))
         db.session.commit()
@@ -138,11 +147,33 @@ def ensure_schema_columns():
         db.session.execute(text("ALTER TABLE competitor_tasks ADD COLUMN last_run_summary TEXT"))
         db.session.commit()
     product_columns = {column["name"] for column in inspect(db.engine).get_columns("competitor_products")}
+    if "platform" not in product_columns:
+        db.session.execute(text("ALTER TABLE competitor_products ADD COLUMN platform VARCHAR(30)"))
+        db.session.execute(text("UPDATE competitor_products SET platform = 'unknown' WHERE platform IS NULL OR platform = ''"))
+        db.session.commit()
     if "product_created_at" not in product_columns:
         db.session.execute(text("ALTER TABLE competitor_products ADD COLUMN product_created_at DATETIME"))
         db.session.commit()
     if "product_tags" not in product_columns:
         db.session.execute(text("ALTER TABLE competitor_products ADD COLUMN product_tags TEXT"))
+        db.session.commit()
+    if "previous_price" not in product_columns:
+        db.session.execute(text("ALTER TABLE competitor_products ADD COLUMN previous_price VARCHAR(80)"))
+        db.session.commit()
+    if "previous_collected_at" not in product_columns:
+        db.session.execute(text("ALTER TABLE competitor_products ADD COLUMN previous_collected_at DATETIME"))
+        db.session.commit()
+    inbox_columns = {column["name"] for column in inspect(db.engine).get_columns("product_inbox_items")}
+    if "options_json" not in inbox_columns:
+        db.session.execute(text("ALTER TABLE product_inbox_items ADD COLUMN options_json TEXT"))
+        db.session.commit()
+    inbox_image_columns = {column["name"] for column in inspect(db.engine).get_columns("inbox_product_images")}
+    if "local_path" not in inbox_image_columns:
+        db.session.execute(text("ALTER TABLE inbox_product_images ADD COLUMN local_path VARCHAR(1000)"))
+        db.session.commit()
+    inbox_variant_columns = {column["name"] for column in inspect(db.engine).get_columns("inbox_variants")}
+    if "local_image_path" not in inbox_variant_columns:
+        db.session.execute(text("ALTER TABLE inbox_variants ADD COLUMN local_image_path VARCHAR(1000)"))
         db.session.commit()
     draft_columns = {column["name"] for column in inspect(db.engine).get_columns("store_product_drafts")}
     if "product_metafields_json" not in draft_columns:

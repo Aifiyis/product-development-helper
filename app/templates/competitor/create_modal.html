@@ -16,6 +16,10 @@
                         <input class="form-check-input" type="radio" name="collection_mode" id="productLinksMode" value="product_links" data-competitor-collection-mode>
                         <label class="form-check-label" for="productLinksMode">链接采集</label>
                     </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="collection_mode" id="categoryMode" value="category" data-competitor-collection-mode>
+                        <label class="form-check-label" for="categoryMode">分类采集</label>
+                    </div>
                 </div>
                 <div data-competitor-sites-fields>
                 <div class="mb-3">
@@ -36,6 +40,25 @@
                         {% endfor %}
                     </select>
                 </div>
+                </div>
+                <div data-competitor-category-fields hidden>
+                    <div class="mb-3">
+                        <label class="form-label" for="categoryUrl">分类网址</label>
+                        <input class="form-control" id="categoryUrl" name="category_url" type="text" placeholder="请填写店铺内分类的网址" disabled data-category-url>
+                    </div>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">采集范围</label>
+                            <select class="form-select" name="category_scope" disabled data-category-scope>
+                                <option value="all">该分类下的全部产品</option>
+                                <option value="pages" selected>该分类前几页产品</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6" data-category-page-count-wrap>
+                            <label class="form-label">采集前几页</label>
+                            <input class="form-control" name="category_page_count" type="number" min="1" max="100" value="1" disabled data-category-page-count>
+                        </div>
+                    </div>
                 </div>
                 <div class="mb-3" data-competitor-links-fields hidden>
                     <label class="form-label" for="productUrls">产品网址</label>

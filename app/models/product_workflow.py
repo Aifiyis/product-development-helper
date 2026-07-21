@@ -64,6 +64,7 @@ class ProductInboxItem(db.Model):
     title = db.Column(db.String(500), nullable=False, index=True)
     description_html = db.Column(db.Text)
     tags_json = db.Column(db.Text)
+    options_json = db.Column(db.Text)
     moved_by = db.Column(db.Integer, db.ForeignKey("users.id"))
     moved_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
     images = db.relationship(
@@ -79,6 +80,11 @@ class ProductInboxItem(db.Model):
     @property
     def tags(self):
         return _json_list(self.tags_json)
+
+    @property
+    def options(self):
+        stored = _json_list(self.options_json)
+        return stored or _derive_options(self.variants)
 
     @property
     def main_image(self):
@@ -103,10 +109,14 @@ class InboxProductImage(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     inbox_item_id = db.Column(db.Integer, db.ForeignKey("product_inbox_items.id"), nullable=False, index=True)
     source_url = db.Column(db.String(1200), nullable=False)
+    local_path = db.Column(db.String(1000))
     alt_text = db.Column(db.String(500))
     position = db.Column(db.Integer, nullable=False, default=0)
     item = db.relationship("ProductInboxItem", back_populates="images")
 
+    @property
+    def public_url(self):
+        return self.source_url
 
 class InboxVariant(db.Model):
     __tablename__ = "inbox_variants"
@@ -118,6 +128,7 @@ class InboxVariant(db.Model):
     compare_at_price = db.Column(db.Numeric(12, 2))
     inventory_quantity = db.Column(db.Integer, nullable=False, default=0)
     image_url = db.Column(db.String(1200))
+    local_image_path = db.Column(db.String(1000))
     available = db.Column(db.Boolean, nullable=False, default=True)
     weight_kg = db.Column(db.Numeric(10, 3))
     package_length_cm = db.Column(db.Numeric(10, 2))
@@ -242,6 +253,18 @@ class DraftVariant(db.Model):
     def option_values(self):
         return _json_dict(self.option_values_json)
 
+
+def _derive_options(variants):
+    values_by_name = {}
+    for variant in variants:
+        for name, value in variant.option_values.items():
+            values_by_name.setdefault(name, [])
+            if value not in values_by_name[name]:
+                values_by_name[name].append(value)
+    return [
+        {"name": name, "values": values}
+        for name, values in values_by_name.items()
+    ]
 
 def _json_dict(raw):
     try:

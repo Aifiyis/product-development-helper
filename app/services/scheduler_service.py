@@ -91,7 +91,7 @@ def run_competitor_task_by_id(task_id, app, complete_instant=False):
             {
                 "saved": saved,
                 "errors": errors[:20],
-                "sites": task.site_list,
+                "sites": [task.category_url] if task.is_category_collection and task.category_url else task.site_list,
             },
             ensure_ascii=False,
         )
