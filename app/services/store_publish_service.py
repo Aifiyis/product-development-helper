@@ -122,9 +122,9 @@ class ShopifyAdapter:
         }
 
     def sync_product(self, draft, publish):
-        self._ensure_product_metafield_definitions()
+        metafield_types = self._ensure_product_metafield_definitions()
         was_update = bool(draft.remote_product_id)
-        product_input = self._product_input(draft, publish)
+        product_input = self._product_input(draft, publish, metafield_types)
         variables = {"synchronous": True, "productSet": product_input}
         identifier_declaration = ""
         identifier_argument = ""
@@ -199,15 +199,28 @@ class ShopifyAdapter:
             for node in ((data.get("metafieldDefinitions") or {}).get("nodes") or [])
             if node.get("key")
         }
+        supported_types = {"single_line_text_field", "list.single_line_text_field"}
+        incompatible = []
+        for definition in PRODUCT_METAFIELD_DEFINITIONS:
+            current = existing.get(definition["key"])
+            if not current:
+                continue
+            current_type = ((current.get("type") or {}).get("name"))
+            if current_type not in supported_types:
+                incompatible.append(
+                    f'custom.{definition["key"]}={current_type or "未知"}'
+                )
+        if incompatible:
+            raise StoreAPIError(
+                "Shopify 商品字段类型不兼容：" + "；".join(incompatible)
+                + "。支持 single_line_text_field 和 list.single_line_text_field。"
+            )
+
+        field_types = {}
         for definition in PRODUCT_METAFIELD_DEFINITIONS:
             current = existing.get(definition["key"])
             if current:
-                current_type = ((current.get("type") or {}).get("name"))
-                if current_type != "single_line_text_field":
-                    raise StoreAPIError(
-                        f'Shopify 字段 custom.{definition["key"]} 的类型是 '
-                        f'{current_type or "未知"}，需要 single_line_text_field。'
-                    )
+                field_types[definition["key"]] = (current.get("type") or {}).get("name")
                 if current.get("pinnedPosition") is None:
                     self._pin_product_metafield_definition(definition["key"])
                 continue
@@ -236,6 +249,8 @@ class ShopifyAdapter:
             user_errors = payload.get("userErrors") or []
             if user_errors:
                 raise StoreAPIError(_format_user_errors(user_errors))
+            field_types[definition["key"]] = "single_line_text_field"
+        return field_types
 
     def _pin_product_metafield_definition(self, key):
         data = self._graphql(
@@ -327,7 +342,7 @@ class ShopifyAdapter:
             "remote_media_failed": snapshot["has_failed"],
         }
 
-    def _product_input(self, draft, publish):
+    def _product_input(self, draft, publish, metafield_types=None):
         options = []
         for position, option in enumerate(draft.options, start=1):
             name = (option.get("name") or "").strip()
@@ -393,7 +408,7 @@ class ShopifyAdapter:
             "files": files,
             "productOptions": options,
             "variants": variants,
-            "metafields": _shopify_product_metafields(draft),
+            "metafields": _shopify_product_metafields(draft, metafield_types),
         }
     def _graphql(self, query, variables=None):
         token = self._access_token()
@@ -565,23 +580,31 @@ def _extract_nested(payload, key):
     return {}
 
 
-def _shopify_product_metafields(draft):
+def _shopify_product_metafields(draft, metafield_types=None):
     metafields = [{
         "namespace": "product_helper",
         "key": "draft_id",
         "type": "single_line_text_field",
         "value": str(draft.id),
     }]
+    field_types = metafield_types if isinstance(metafield_types, dict) else {}
     values = draft.product_metafields
     for definition in PRODUCT_METAFIELD_DEFINITIONS:
         value = str(values.get(definition["key"]) or "").strip()
-        if value:
-            metafields.append({
-                "namespace": SHOPIFY_PRODUCT_METAFIELD_NAMESPACE,
-                "key": definition["key"],
-                "type": "single_line_text_field",
-                "value": value,
-            })
+        if not value:
+            continue
+        field_type = field_types.get(definition["key"], "single_line_text_field")
+        serialized_value = (
+            json.dumps([value], ensure_ascii=False)
+            if field_type == "list.single_line_text_field"
+            else value
+        )
+        metafields.append({
+            "namespace": SHOPIFY_PRODUCT_METAFIELD_NAMESPACE,
+            "key": definition["key"],
+            "type": field_type,
+            "value": serialized_value,
+        })
     return metafields
 
 def _shopify_media_snapshot(draft, product):

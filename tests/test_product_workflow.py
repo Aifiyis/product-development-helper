@@ -21,7 +21,7 @@ from app.models import (
 )
 from app.services.credential_service import CredentialError, decrypt_credentials, encrypt_credentials
 from app.services.store_publish_queue import run_store_publish_by_id
-from app.services.store_publish_service import ShopifyAdapter, ShoplazzaAdapter, validate_draft
+from app.services.store_publish_service import ShopifyAdapter, ShoplazzaAdapter, StoreAPIError, validate_draft
 
 
 class ProductWorkflowTest(unittest.TestCase):
@@ -545,8 +545,12 @@ class ProductWorkflowTest(unittest.TestCase):
                 )
             ])
             adapter._graphql = MagicMock(side_effect=responses)
-            adapter._ensure_product_metafield_definitions()
+            field_types = adapter._ensure_product_metafield_definitions()
 
+            self.assertEqual(
+                field_types,
+                {definition["key"]: "single_line_text_field" for definition in PRODUCT_METAFIELD_DEFINITIONS},
+            )
             self.assertEqual(
                 adapter._graphql.call_count,
                 1 + len(PRODUCT_METAFIELD_DEFINITIONS),
@@ -562,6 +566,70 @@ class ProductWorkflowTest(unittest.TestCase):
                 self.assertEqual(payload["type"], "single_line_text_field")
                 self.assertEqual(payload["ownerType"], "PRODUCT")
                 self.assertTrue(payload["pin"])
+
+    def test_shopify_uses_existing_text_and_list_metafield_types(self):
+        item_id = self.move_product(self.create_product())
+        store_id = self.create_store()
+        self.claim(item_id, [store_id])
+        with self.app.app_context():
+            draft = StoreProductDraft.query.one()
+            draft.product_metafields_json = json.dumps({
+                "elements": "Sport & Team Spirit",
+                "recipient": "Team",
+                "hobby": "Sport",
+            })
+            types = {
+                definition["key"]: (
+                    "list.single_line_text_field"
+                    if definition["key"] in {"recipient", "hobby"}
+                    else "single_line_text_field"
+                )
+                for definition in PRODUCT_METAFIELD_DEFINITIONS
+            }
+            nodes = [
+                {
+                    "key": definition["key"],
+                    "type": {"name": types[definition["key"]]},
+                    "pinnedPosition": index,
+                }
+                for index, definition in enumerate(PRODUCT_METAFIELD_DEFINITIONS, start=1)
+            ]
+            adapter = ShopifyAdapter(db.session.get(StoreConnection, store_id))
+            adapter._graphql = MagicMock(return_value={"metafieldDefinitions": {"nodes": nodes}})
+
+            detected_types = adapter._ensure_product_metafield_definitions()
+            payload = adapter._product_input(draft, publish=False, metafield_types=detected_types)
+            metafields = {
+                item["key"]: item
+                for item in payload["metafields"]
+                if item["namespace"] == "custom"
+            }
+
+            self.assertEqual(detected_types, types)
+            self.assertEqual(metafields["elements"]["type"], "single_line_text_field")
+            self.assertEqual(metafields["elements"]["value"], "Sport & Team Spirit")
+            self.assertEqual(metafields["recipient"]["type"], "list.single_line_text_field")
+            self.assertEqual(json.loads(metafields["recipient"]["value"]), ["Team"])
+            self.assertEqual(metafields["hobby"]["type"], "list.single_line_text_field")
+            self.assertEqual(json.loads(metafields["hobby"]["value"]), ["Sport"])
+            adapter._graphql.assert_called_once()
+
+    def test_shopify_reports_all_incompatible_metafield_types(self):
+        store_id = self.create_store()
+        with self.app.app_context():
+            adapter = ShopifyAdapter(db.session.get(StoreConnection, store_id))
+            adapter._graphql = MagicMock(return_value={
+                "metafieldDefinitions": {"nodes": [
+                    {"key": "recipient", "type": {"name": "multi_line_text_field"}, "pinnedPosition": 1},
+                    {"key": "hobby", "type": {"name": "number_integer"}, "pinnedPosition": 2},
+                ]}
+            })
+            with self.assertRaises(StoreAPIError) as context:
+                adapter._ensure_product_metafield_definitions()
+            message = str(context.exception)
+            self.assertIn("custom.recipient=multi_line_text_field", message)
+            self.assertIn("custom.hobby=number_integer", message)
+            adapter._graphql.assert_called_once()
 
     def test_shopify_deletes_blank_product_metafields_on_update(self):
         item_id = self.move_product(self.create_product())
