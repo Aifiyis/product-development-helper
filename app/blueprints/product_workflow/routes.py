@@ -24,7 +24,12 @@ from app.models import (
 from app.permissions import permission_required
 from app.services.credential_service import CredentialError, encrypt_credentials, normalize_shop_domain
 from app.services.store_publish_queue import enqueue_store_publish
-from app.services.store_publish_service import redact_error_message, test_store_connection
+from app.services.store_publish_service import (
+    StoreAPIError,
+    adapter_for,
+    redact_error_message,
+    test_store_connection,
+)
 
 
 bp = Blueprint("product_workflow", __name__, url_prefix="/product-workflow")
@@ -217,8 +222,50 @@ def edit_draft(draft_id):
         is_inbox_editor=False,
         editor_variants=[_variant_for_editor(item) for item in draft.variants],
         product_metafield_definitions=PRODUCT_METAFIELD_DEFINITIONS,
+        editor_metafield_values=_metafield_form_values(draft),
+        shopify_reference_url=(
+            url_for("product_workflow.shopify_reference_data", draft_id=draft.id)
+            if draft.store.platform == "shopify" else ""
+        ),
+        shopify_category_url=(
+            url_for("product_workflow.shopify_category_search", draft_id=draft.id)
+            if draft.store.platform == "shopify" else ""
+        ),
 
     )
+
+
+@bp.get("/drafts/<int:draft_id>/shopify-reference-data")
+@login_required
+@permission_required("product_inbox.edit")
+def shopify_reference_data(draft_id):
+    draft = db.get_or_404(StoreProductDraft, draft_id)
+    if draft.store.platform != "shopify":
+        return jsonify({"error": "该店铺不是 Shopify 店铺。"}), 400
+    try:
+        return jsonify(adapter_for(draft.store).editor_reference_data())
+    except StoreAPIError as exc:
+        return jsonify({"error": redact_error_message(exc)}), 502
+
+
+@bp.get("/drafts/<int:draft_id>/shopify-categories")
+@login_required
+@permission_required("product_inbox.edit")
+def shopify_category_search(draft_id):
+    draft = db.get_or_404(StoreProductDraft, draft_id)
+    if draft.store.platform != "shopify":
+        return jsonify({"error": "该店铺不是 Shopify 店铺。"}), 400
+    adapter = adapter_for(draft.store)
+    try:
+        if request.args.get("recommend") == "1":
+            categories = adapter.suggest_product_categories(
+                request.args.get("title") or draft.title, first=8
+            )
+        else:
+            categories = adapter.search_product_categories(request.args.get("q", ""), first=8)
+        return jsonify({"categories": categories})
+    except StoreAPIError as exc:
+        return jsonify({"error": redact_error_message(exc)}), 502
 
 
 @bp.post("/drafts/<int:draft_id>/create-remote-draft")
@@ -537,6 +584,10 @@ def _update_inbox_item_from_form(item):
 def _update_draft_from_form(draft):
     draft.title = request.form.get("title", "").strip()
     draft.product_type = request.form.get("product_type", "").strip()
+    draft.category_id = request.form.get("category_id", "").strip()
+    draft.category_name = request.form.get("category_name", "").strip()
+    if draft.category_name and not draft.category_id:
+        raise ValueError("请从搜索或推荐结果中选择 Category，不能只填写分类名称。")
     draft.base_sku = request.form.get("base_sku", "").strip()
     draft.description_html = _sanitize_html(request.form.get("description_html", ""))
     tags = [item.strip() for item in request.form.get("tags", "").split(",") if item.strip()]
@@ -625,6 +676,18 @@ def _save_upload(draft_id, upload):
     base_url = current_app.config.get("PUBLIC_BASE_URL") or request.url_root.rstrip("/")
     public_url = f"{base_url}{url_for('product_workflow.uploaded_file', filename=relative)}"
     return public_url, relative
+
+
+def _metafield_form_values(draft):
+    values = draft.product_metafields
+    return {
+        definition["key"]: (
+            values.get(definition["key"])
+            or values.get(definition.get("legacy_key"), "")
+            or ""
+        )
+        for definition in PRODUCT_METAFIELD_DEFINITIONS
+    }
 
 
 def _variant_for_editor(variant):

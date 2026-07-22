@@ -625,6 +625,107 @@ document.addEventListener("DOMContentLoaded", () => {
     const generateSkuButton = editorForm.querySelector("[data-generate-sku]");
     const escapeHtml = (value) => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;")
         .replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
+    const shopifyReferenceEndpoint = editorForm.dataset.shopifyReferenceEndpoint;
+    const shopifyCategoryEndpoint = editorForm.dataset.shopifyCategoryEndpoint;
+    const productTitleInput = editorForm.querySelector('[name="title"]');
+    const fillDataList = (element, values) => {
+        if (!element) return;
+        element.replaceChildren(...values.map((value) => {
+            const option = document.createElement("option");
+            option.value = value;
+            return option;
+        }));
+    };
+    if (shopifyReferenceEndpoint) {
+        fetch(shopifyReferenceEndpoint)
+            .then(async (response) => {
+                const payload = await response.json();
+                if (!response.ok) throw new Error(payload.error || "Shopify 编辑数据加载失败");
+                return payload;
+            })
+            .then((payload) => {
+                fillDataList(editorForm.querySelector("[data-product-type-options]"), payload.product_types || []);
+                Object.entries(payload.metafield_choices || {}).forEach(([key, choices]) => {
+                    const target = Array.from(editorForm.querySelectorAll("[data-metafield-options]"))
+                        .find((element) => element.dataset.metafieldOptions === key);
+                    fillDataList(target, choices || []);
+                });
+            })
+            .catch((error) => console.warn(error.message));
+    }
+    const categoryPicker = editorForm.querySelector("[data-category-picker]");
+    if (categoryPicker && shopifyCategoryEndpoint) {
+        const categoryId = categoryPicker.querySelector("[data-category-id]");
+        const categorySearch = categoryPicker.querySelector("[data-category-search]");
+        const categorySuggestions = categoryPicker.querySelector("[data-category-suggestions]");
+        const categoryStatus = categoryPicker.querySelector("[data-category-status]");
+        const categoryClear = categoryPicker.querySelector("[data-category-clear]");
+        let selectedCategoryName = categorySearch.value;
+        let categoryTimer = null;
+        const renderCategories = (categories, suggested) => {
+            categorySuggestions.innerHTML = categories.map((category) => `
+                <button type="button" data-category-option data-category-id="${escapeHtml(category.id)}" data-category-name="${escapeHtml(category.full_name || category.name)}">
+                    <span>${escapeHtml(category.full_name || category.name)}</span>
+                    ${suggested ? "<small>推荐</small>" : ""}
+                </button>
+            `).join("");
+            categorySuggestions.hidden = !categories.length;
+            categoryStatus.textContent = categories.length
+                ? `${categories.length} 个${suggested ? "推荐" : "搜索"}结果`
+                : "没有找到匹配的 Shopify Category";
+        };
+        const loadCategories = async ({ query = "", suggested = false } = {}) => {
+            const url = new URL(shopifyCategoryEndpoint, window.location.origin);
+            if (suggested) {
+                url.searchParams.set("recommend", "1");
+                url.searchParams.set("title", productTitleInput?.value || "");
+                categoryStatus.textContent = "正在按产品标题推荐…";
+            } else {
+                url.searchParams.set("q", query);
+                categoryStatus.textContent = "正在搜索 Category…";
+            }
+            try {
+                const response = await fetch(url);
+                const payload = await response.json();
+                if (!response.ok) throw new Error(payload.error || "Category 加载失败");
+                renderCategories(payload.categories || [], suggested);
+            } catch (error) {
+                categorySuggestions.hidden = true;
+                categoryStatus.textContent = error.message;
+            }
+        };
+        categorySuggestions.addEventListener("click", (event) => {
+            const option = event.target.closest("[data-category-option]");
+            if (!option) return;
+            categoryId.value = option.dataset.categoryId;
+            categorySearch.value = option.dataset.categoryName;
+            selectedCategoryName = option.dataset.categoryName;
+            categorySuggestions.hidden = true;
+            categoryStatus.textContent = "已选择 Shopify Category";
+        });
+        categorySearch.addEventListener("input", () => {
+            if (categorySearch.value !== selectedCategoryName) categoryId.value = "";
+            window.clearTimeout(categoryTimer);
+            const query = categorySearch.value.trim();
+            if (query.length < 2) {
+                categorySuggestions.hidden = true;
+                categoryStatus.textContent = "输入至少 2 个字符搜索 Category";
+                return;
+            }
+            categoryTimer = window.setTimeout(() => loadCategories({ query }), 300);
+        });
+        categoryClear.addEventListener("click", () => {
+            categoryId.value = "";
+            categorySearch.value = "";
+            selectedCategoryName = "";
+            categorySuggestions.hidden = true;
+            categoryStatus.textContent = "已清除 Category";
+        });
+        productTitleInput?.addEventListener("change", () => {
+            if (!categoryId.value) loadCategories({ suggested: true });
+        });
+        if (!categoryId.value) loadCategories({ suggested: true });
+    }
     const signature = (values) => JSON.stringify(options.map((option) => [option.name, values?.[option.name] || ""]));
     const readOptions = () => Array.from(optionEditor.querySelectorAll("[data-option-row]")).map((row) => ({
         name: row.querySelector("[data-option-name]").value.trim(),

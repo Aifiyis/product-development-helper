@@ -8,7 +8,14 @@
     <span><b>4</b>店铺发布</span>
 </section>
 
-<form method="post" enctype="multipart/form-data" class="product-editor-form" data-product-editor>
+<form
+    method="post"
+    enctype="multipart/form-data"
+    class="product-editor-form"
+    data-product-editor
+    data-shopify-reference-endpoint="{{ shopify_reference_url|default('') }}"
+    data-shopify-category-endpoint="{{ shopify_category_url|default('') }}"
+>
     <header class="editor-action-bar">
         <div>
             <a href="{{ url_for('product_workflow.inbox', tab='unclaimed' if is_inbox_editor else 'claimed') }}" class="btn btn-light btn-sm"><i class="bi bi-arrow-left"></i></a>
@@ -49,9 +56,31 @@
                     {% if editor_source_url %}<a class="btn btn-outline-secondary" href="{{ editor_source_url }}" target="_blank" rel="noreferrer">访问</a>{% endif %}
                 </div>
             </div>
+            {% if not is_inbox_editor and draft.store.platform == "shopify" %}
+            <div class="editor-field-wide">
+                <label class="form-label">Category</label>
+                <div class="category-picker" data-category-picker>
+                    <input type="hidden" name="category_id" value="{{ draft.category_id or '' }}" data-category-id>
+                    <div class="input-group">
+                        <input
+                            class="form-control"
+                            name="category_name"
+                            value="{{ draft.category_name or '' }}"
+                            placeholder="按产品标题推荐，也可输入分类关键词搜索"
+                            autocomplete="off"
+                            data-category-search
+                        >
+                        <button class="btn btn-outline-secondary" type="button" title="清除 Category" data-category-clear><i class="bi bi-x-lg"></i></button>
+                    </div>
+                    <div class="category-suggestions" data-category-suggestions hidden></div>
+                    <small class="text-muted" data-category-status>将按产品标题加载推荐分类</small>
+                </div>
+            </div>
+            {% endif %}
             <div>
-                <label class="form-label">产品类型</label>
-                <input class="form-control" name="product_type" value="{{ draft.product_type or '' }}">
+                <label class="form-label">产品类型(Type)</label>
+                <input class="form-control" name="product_type" value="{{ draft.product_type or '' }}" list="shopify-product-type-options" autocomplete="off">
+                <datalist id="shopify-product-type-options" data-product-type-options></datalist>
             </div>
             <div class="editor-field-wide">
                 <label class="form-label">产品标题</label>
@@ -81,9 +110,13 @@
                     class="form-control"
                     id="metafield-{{ definition.key }}"
                     name="metafield_{{ definition.key }}"
-                    value="{{ draft.product_metafields.get(definition.key, '') }}"
+                    value="{{ editor_metafield_values.get(definition.key, '') }}"
                     maxlength="255"
+                    list="metafield-options-{{ definition.key }}"
+                    autocomplete="off"
                 >
+                <datalist id="metafield-options-{{ definition.key }}" data-metafield-options="{{ definition.key }}"></datalist>
+                <small class="text-muted">custom.{{ definition.key }}</small>
             </div>
             {% endfor %}
         </div>

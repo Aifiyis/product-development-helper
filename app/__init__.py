@@ -185,6 +185,12 @@ def ensure_schema_columns():
     if "base_sku" not in draft_columns:
         db.session.execute(text("ALTER TABLE store_product_drafts ADD COLUMN base_sku VARCHAR(255)"))
         db.session.commit()
+    if "category_id" not in draft_columns:
+        db.session.execute(text("ALTER TABLE store_product_drafts ADD COLUMN category_id VARCHAR(255)"))
+        db.session.commit()
+    if "category_name" not in draft_columns:
+        db.session.execute(text("ALTER TABLE store_product_drafts ADD COLUMN category_name VARCHAR(500)"))
+        db.session.commit()
     image_columns = {column["name"] for column in inspect(db.engine).get_columns("draft_product_images")}
     if "remote_media_id" not in image_columns:
         db.session.execute(text("ALTER TABLE draft_product_images ADD COLUMN remote_media_id VARCHAR(255)"))

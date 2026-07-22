@@ -5,10 +5,10 @@ from app.extensions import db
 
 
 PRODUCT_METAFIELD_DEFINITIONS = (
-    {"key": "product_developer", "label": "Product Developer"},
-    {"key": "product_specialist", "label": "Product Specialist"},
-    {"key": "elements", "label": "Elements"},
-    {"key": "occasion", "label": "Occasion"},
+    {"key": "product_developer_name", "legacy_key": "product_developer", "label": "Product Developer"},
+    {"key": "product_specialist_name", "legacy_key": "product_specialist", "label": "Product Specialist"},
+    {"key": "design", "legacy_key": "elements", "label": "Elements"},
+    {"key": "holiday", "legacy_key": "occasion", "label": "Occasion"},
     {"key": "recipient", "label": "Recipient"},
     {"key": "hobby", "label": "Hobby"},
 )
@@ -149,6 +149,8 @@ class StoreProductDraft(db.Model):
     inbox_item_id = db.Column(db.Integer, db.ForeignKey("product_inbox_items.id"), nullable=False, index=True)
     store_connection_id = db.Column(db.Integer, db.ForeignKey("store_connections.id"), nullable=False, index=True)
     product_type = db.Column(db.String(255))
+    category_id = db.Column(db.String(255))
+    category_name = db.Column(db.String(500))
     base_sku = db.Column(db.String(255))
     title = db.Column(db.String(500), nullable=False, index=True)
     description_html = db.Column(db.Text)

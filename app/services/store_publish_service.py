@@ -122,7 +122,14 @@ class ShopifyAdapter:
         }
 
     def sync_product(self, draft, publish):
-        metafield_types = self._ensure_product_metafield_definitions()
+        metafield_metadata = self._ensure_product_metafield_definitions()
+        metafield_types = (
+            metafield_metadata.get("types", {}) if isinstance(metafield_metadata, dict) else {}
+        )
+        metafield_choices = (
+            metafield_metadata.get("choices", {}) if isinstance(metafield_metadata, dict) else {}
+        )
+        _validate_product_metafield_choices(draft, metafield_choices)
         was_update = bool(draft.remote_product_id)
         product_input = self._product_input(draft, publish, metafield_types)
         variables = {"synchronous": True, "productSet": product_input}
@@ -168,6 +175,7 @@ class ShopifyAdapter:
         )
         if was_update:
             self._delete_blank_product_metafields(remote_id, draft)
+            self._delete_legacy_product_metafields(remote_id)
         media = self._wait_for_media(remote_id, draft, product)
         return {
             "remote_product_id": remote_id,
@@ -175,6 +183,103 @@ class ShopifyAdapter:
             "remote_url": remote_url,
             **media,
         }
+
+    def editor_reference_data(self):
+        data = self._graphql(
+            """
+            query ProductEditorReferenceData($namespace: String!, $after: String) {
+              metafieldDefinitions(
+                first: 100
+                ownerType: PRODUCT
+                namespace: $namespace
+              ) {
+                nodes {
+                  name key
+                  type { name }
+                  validations { name value }
+                }
+              }
+              productTypes(first: 250, after: $after) {
+                nodes
+                pageInfo { hasNextPage endCursor }
+              }
+            }
+            """,
+            {"namespace": SHOPIFY_PRODUCT_METAFIELD_NAMESPACE, "after": None},
+        )
+        definitions = {
+            node.get("key"): node
+            for node in ((data.get("metafieldDefinitions") or {}).get("nodes") or [])
+            if node.get("key")
+        }
+        product_types = list((data.get("productTypes") or {}).get("nodes") or [])
+        page_info = (data.get("productTypes") or {}).get("pageInfo") or {}
+        while page_info.get("hasNextPage") and page_info.get("endCursor"):
+            page = self._graphql(
+                """
+                query ProductEditorTypes($after: String!) {
+                  productTypes(first: 250, after: $after) {
+                    nodes
+                    pageInfo { hasNextPage endCursor }
+                  }
+                }
+                """,
+                {"after": page_info["endCursor"]},
+            ).get("productTypes") or {}
+            product_types.extend(page.get("nodes") or [])
+            page_info = page.get("pageInfo") or {}
+
+        choices = {}
+        for definition in PRODUCT_METAFIELD_DEFINITIONS:
+            node = definitions.get(definition["key"]) or {}
+            choices[definition["key"]] = _metafield_definition_choices(node)
+        return {
+            "metafield_choices": choices,
+            "product_types": list(dict.fromkeys(item for item in product_types if item)),
+        }
+
+    def search_product_categories(self, search, first=8):
+        search = str(search or "").strip()
+        if len(search) < 2:
+            return []
+        data = self._graphql(
+            """
+            query ProductEditorCategorySearch($search: String!, $first: Int!) {
+              taxonomy {
+                categories(first: $first, search: $search) {
+                  nodes { id name fullName isLeaf isArchived }
+                }
+              }
+            }
+            """,
+            {"search": search, "first": max(1, min(int(first), 20))},
+        )
+        nodes = ((data.get("taxonomy") or {}).get("categories") or {}).get("nodes") or []
+        return [
+            {"id": node.get("id"), "name": node.get("name"), "full_name": node.get("fullName")}
+            for node in nodes
+            if node.get("id") and node.get("isLeaf") and not node.get("isArchived")
+        ]
+
+    def suggest_product_categories(self, title, first=8):
+        tokens = [
+            token for token in re.findall(r"[A-Za-z0-9]+(?:[-'][A-Za-z0-9]+)*", title or "")
+            if len(token) > 1 and not re.fullmatch(r"[A-Za-z]*\d+[A-Za-z\d-]*", token)
+        ]
+        stopwords = {
+            "personalization", "personalized", "custom", "the", "and", "with", "for",
+            "howard", "texas", "state", "university", "landmark", "buildings", "cs", "mj",
+        }
+        tokens = [token for token in tokens if token.lower() not in stopwords]
+        searches = []
+        for index in range(len(tokens) - 2, -1, -1):
+            searches.append(f"{tokens[index]} {tokens[index + 1]}")
+        searches.extend(reversed(tokens))
+        for search in dict.fromkeys(searches):
+            categories = self.search_product_categories(search, first=first)
+            if categories:
+                return categories
+        return []
 
     def _ensure_product_metafield_definitions(self):
         data = self._graphql(
@@ -188,6 +293,7 @@ class ShopifyAdapter:
                 nodes {
                   id name namespace key pinnedPosition
                   type { name }
+                  validations { name value }
                 }
               }
             }
@@ -217,10 +323,12 @@ class ShopifyAdapter:
             )
 
         field_types = {}
+        field_choices = {}
         for definition in PRODUCT_METAFIELD_DEFINITIONS:
             current = existing.get(definition["key"])
             if current:
                 field_types[definition["key"]] = (current.get("type") or {}).get("name")
+                field_choices[definition["key"]] = _metafield_definition_choices(current)
                 if current.get("pinnedPosition") is None:
                     self._pin_product_metafield_definition(definition["key"])
                 continue
@@ -250,7 +358,8 @@ class ShopifyAdapter:
             if user_errors:
                 raise StoreAPIError(_format_user_errors(user_errors))
             field_types[definition["key"]] = "single_line_text_field"
-        return field_types
+            field_choices[definition["key"]] = []
+        return {"types": field_types, "choices": field_choices}
 
     def _pin_product_metafield_definition(self, key):
         data = self._graphql(
@@ -283,7 +392,7 @@ class ShopifyAdapter:
                 "key": definition["key"],
             }
             for definition in PRODUCT_METAFIELD_DEFINITIONS
-            if not (draft.product_metafields.get(definition["key"]) or "").strip()
+            if not _product_metafield_value(draft, definition)
         ]
         if not blank:
             return
@@ -304,6 +413,61 @@ class ShopifyAdapter:
         user_errors = payload.get("userErrors") or []
         if user_errors:
             raise StoreAPIError(_format_user_errors(user_errors))
+    def _delete_legacy_product_metafields(self, remote_id):
+        legacy_keys = {
+            definition["legacy_key"]
+            for definition in PRODUCT_METAFIELD_DEFINITIONS
+            if definition.get("legacy_key") and definition["legacy_key"] != definition["key"]
+        }
+        if not legacy_keys:
+            return
+        data = self._graphql(
+            """
+            query ProductHelperLegacyMetafields($id: ID!, $namespace: String!) {
+              node(id: $id) {
+                ... on Product {
+                  metafields(first: 100, namespace: $namespace) {
+                    nodes { namespace key }
+                  }
+                }
+              }
+            }
+            """,
+            {"id": remote_id, "namespace": SHOPIFY_PRODUCT_METAFIELD_NAMESPACE},
+        )
+        existing_keys = {
+            node.get("key")
+            for node in ((((data.get("node") or {}).get("metafields") or {}).get("nodes")) or [])
+            if node.get("namespace") == SHOPIFY_PRODUCT_METAFIELD_NAMESPACE
+        }
+        stale_keys = sorted(legacy_keys & existing_keys)
+        if not stale_keys:
+            return
+        result = self._graphql(
+            """
+            mutation ProductHelperDeleteLegacyMetafields(
+              $metafields: [MetafieldIdentifierInput!]!
+            ) {
+              metafieldsDelete(metafields: $metafields) {
+                deletedMetafields { ownerId namespace key }
+                userErrors { field message }
+              }
+            }
+            """,
+            {"metafields": [
+                {
+                    "ownerId": remote_id,
+                    "namespace": SHOPIFY_PRODUCT_METAFIELD_NAMESPACE,
+                    "key": key,
+                }
+                for key in stale_keys
+            ]},
+        )
+        payload = result.get("metafieldsDelete") or {}
+        user_errors = payload.get("userErrors") or []
+        if user_errors:
+            raise StoreAPIError(_format_user_errors(user_errors))
+
     def _wait_for_media(self, remote_id, draft, product):
         snapshot = _shopify_media_snapshot(draft, product)
         attempts = max(1, int(current_app.config.get("SHOPIFY_MEDIA_POLL_ATTEMPTS", 15)))
@@ -403,6 +567,7 @@ class ShopifyAdapter:
             "title": draft.title.strip(),
             "descriptionHtml": draft.description_html or "",
             "productType": draft.product_type or "",
+            **({"category": draft.category_id} if draft.category_id else {}),
             "status": "ACTIVE" if publish else "DRAFT",
             "tags": draft.tags,
             "files": files,
@@ -580,6 +745,37 @@ def _extract_nested(payload, key):
     return {}
 
 
+def _metafield_definition_choices(node):
+    for validation in node.get("validations") or []:
+        if validation.get("name") != "choices":
+            continue
+        try:
+            choices = json.loads(validation.get("value") or "[]")
+        except (json.JSONDecodeError, TypeError):
+            return []
+        return [str(choice) for choice in choices if str(choice).strip()] if isinstance(choices, list) else []
+    return []
+
+
+def _validate_product_metafield_choices(draft, choices_by_key):
+    errors = []
+    for definition in PRODUCT_METAFIELD_DEFINITIONS:
+        choices = choices_by_key.get(definition["key"]) or []
+        value = _product_metafield_value(draft, definition)
+        if value and choices and value not in choices:
+            errors.append(f'{definition["label"]} 的值“{value}”不在店铺可选数据集中')
+    if errors:
+        raise StoreAPIError("；".join(errors))
+
+
+def _product_metafield_value(draft, definition):
+    values = draft.product_metafields
+    value = values.get(definition["key"])
+    if value in (None, "") and definition.get("legacy_key"):
+        value = values.get(definition["legacy_key"])
+    return str(value or "").strip()
+
+
 def _shopify_product_metafields(draft, metafield_types=None):
     metafields = [{
         "namespace": "product_helper",
@@ -588,9 +784,8 @@ def _shopify_product_metafields(draft, metafield_types=None):
         "value": str(draft.id),
     }]
     field_types = metafield_types if isinstance(metafield_types, dict) else {}
-    values = draft.product_metafields
     for definition in PRODUCT_METAFIELD_DEFINITIONS:
-        value = str(values.get(definition["key"]) or "").strip()
+        value = _product_metafield_value(draft, definition)
         if not value:
             continue
         field_type = field_types.get(definition["key"], "single_line_text_field")

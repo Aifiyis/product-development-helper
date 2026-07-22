@@ -158,12 +158,12 @@ class ProductWorkflowTest(unittest.TestCase):
         response = self.client.post(
             f"/product-workflow/drafts/{draft_id}/edit",
             data={
-                "title": "Edited shirt", "product_type": "Apparel", "base_sku": "SHIRT", "tags": "one, two",
+                "title": "Edited shirt", "product_type": "Apparel", "category_id": "gid://shopify/TaxonomyCategory/aa-1-13-14", "category_name": "Apparel & Accessories > Clothing > Clothing Tops > Sweatshirts", "base_sku": "SHIRT", "tags": "one, two",
                 "description_html": '<p>Allowed</p><script>alert("x")</script>',
-                "metafield_product_developer": "Liu XiaoJie",
-                "metafield_product_specialist": "Ma RuiTing",
-                "metafield_elements": "Sport & Team Spirit",
-                "metafield_occasion": "Game Day",
+                "metafield_product_developer_name": "Liu XiaoJie",
+                "metafield_product_specialist_name": "Ma RuiTing",
+                "metafield_design": "Sport & Team Spirit",
+                "metafield_holiday": "Game Day",
                 "metafield_recipient": "Team",
                 "metafield_hobby": "Sport",
                 "options_json": json.dumps([{"name": "Color", "values": ["Black", "Blue"]}]),
@@ -185,9 +185,11 @@ class ProductWorkflowTest(unittest.TestCase):
             self.assertEqual([variant.sku for variant in draft.variants], ["BLACK", "BLUE"])
             self.assertEqual([variant.option_values for variant in draft.variants], [{"Color": "Black"}, {"Color": "Blue"}])
             self.assertEqual(draft.base_sku, "SHIRT")
+            self.assertEqual(draft.category_id, "gid://shopify/TaxonomyCategory/aa-1-13-14")
+            self.assertEqual(draft.category_name, "Apparel & Accessories > Clothing > Clothing Tops > Sweatshirts")
             self.assertEqual(str(draft.variants[0].price), "30.50")
             self.assertEqual(str(draft.variants[0].package_length_cm), "20.00")
-            self.assertEqual(draft.product_metafields["product_developer"], "Liu XiaoJie")
+            self.assertEqual(draft.product_metafields["product_developer_name"], "Liu XiaoJie")
             self.assertEqual(draft.product_metafields["hobby"], "Sport")
         page = self.client.get(f"/product-workflow/drafts/{draft_id}/edit").get_data(as_text=True)
         self.assertIn("变体信息", page)
@@ -196,6 +198,15 @@ class ProductWorkflowTest(unittest.TestCase):
         self.assertIn("批量设置（待开发）", page)
         self.assertIn("Product Developer", page)
         self.assertIn("Liu XiaoJie", page)
+        self.assertIn("Category", page)
+        self.assertIn("产品类型(Type)", page)
+        self.assertIn("custom.product_developer_name", page)
+        self.assertIn("custom.product_specialist_name", page)
+        self.assertIn("custom.design", page)
+        self.assertIn("custom.holiday", page)
+        self.assertNotIn("custom.product_developer</small>", page)
+        self.assertIn("shopify-reference-data", page)
+        self.assertIn("shopify-categories", page)
         self.assertIn("基础 SKU", page)
         self.assertIn("智能 SKU 生成", page)
         script_response = self.client.get("/static/js/app.js")
@@ -203,6 +214,16 @@ class ProductWorkflowTest(unittest.TestCase):
         script_response.close()
         self.assertIn("data-sku-option-index", script)
         self.assertIn("if (exact) return { ...exact, options: values };", script)
+
+        invalid_category = self.client.post(
+            f"/product-workflow/drafts/{draft_id}/edit",
+            data={"title": "Edited shirt", "category_name": "Typed but not selected"},
+            follow_redirects=True,
+        )
+        self.assertIn("不能只填写分类名称", invalid_category.get_data(as_text=True))
+        with self.app.app_context():
+            draft = db.session.get(StoreProductDraft, draft_id)
+            self.assertEqual(draft.category_id, "gid://shopify/TaxonomyCategory/aa-1-13-14")
 
     def test_publish_uses_only_current_options_when_old_variant_values_remain(self):
         item_id = self.move_product(self.create_product())
@@ -349,6 +370,8 @@ class ProductWorkflowTest(unittest.TestCase):
                 definition["key"]: f'value-{definition["key"]}'
                 for definition in PRODUCT_METAFIELD_DEFINITIONS
             })
+            draft.category_id = "gid://shopify/TaxonomyCategory/aa-1-13-14"
+            draft.category_name = "Apparel & Accessories > Clothing > Clothing Tops > Sweatshirts"
             adapter = ShopifyAdapter(store)
             adapter._ensure_product_metafield_definitions = MagicMock()
             adapter._graphql = MagicMock(return_value={
@@ -357,6 +380,7 @@ class ProductWorkflowTest(unittest.TestCase):
             result = adapter.sync_product(draft, publish=False)
             first_variables = adapter._graphql.call_args.args[1]
             self.assertEqual(first_variables["productSet"]["status"], "DRAFT")
+            self.assertEqual(first_variables["productSet"]["category"], "gid://shopify/TaxonomyCategory/aa-1-13-14")
             self.assertNotIn("identifier", first_variables)
             self.assertEqual(
                 first_variables["productSet"]["variants"][0]["inventoryItem"]["measurement"]["weight"]["unit"],
@@ -374,8 +398,8 @@ class ProductWorkflowTest(unittest.TestCase):
                 definition["key"] for definition in PRODUCT_METAFIELD_DEFINITIONS
             })
             self.assertEqual(
-                custom_metafields["product_developer"]["value"],
-                "value-product_developer",
+                custom_metafields["product_developer_name"]["value"],
+                "value-product_developer_name",
             )
 
             self.assertEqual(result["remote_product_id"], "gid://shopify/Product/9")
@@ -384,7 +408,11 @@ class ProductWorkflowTest(unittest.TestCase):
                 image.remote_media_id = remote["remote_media_id"]
             draft.variants[0].remote_media_id = result["remote_variant_images"][draft.variants[0].sku]["remote_media_id"]
             adapter.sync_product(draft, publish=True)
-            second_variables = adapter._graphql.call_args.args[1]
+            second_variables = [
+                call.args[1]
+                for call in adapter._graphql.call_args_list
+                if len(call.args) > 1 and "productSet" in call.args[1]
+            ][-1]
             self.assertEqual(second_variables["productSet"]["status"], "ACTIVE")
             self.assertEqual(second_variables["identifier"]["id"], result["remote_product_id"])
             self.assertTrue(all("id" in item for item in second_variables["productSet"]["files"]))
@@ -525,6 +553,122 @@ class ProductWorkflowTest(unittest.TestCase):
         finally:
             local_file.unlink(missing_ok=True)
 
+    @patch("app.blueprints.product_workflow.routes.adapter_for")
+    def test_shopify_editor_reference_and_category_routes(self, adapter_for):
+        item_id = self.move_product(self.create_product())
+        store_id = self.create_store()
+        self.claim(item_id, [store_id])
+        with self.app.app_context():
+            draft_id = StoreProductDraft.query.one().id
+        adapter = adapter_for.return_value
+        adapter.editor_reference_data.return_value = {
+            "metafield_choices": {
+                "product_developer_name": ["Nancy", "Liu XiaoJie"],
+                "product_specialist_name": ["Nancy", "Ma RuiTing"],
+                "design": ["Sport & Team Spirit"],
+                "holiday": ["Game Day"],
+                "recipient": ["Team"],
+                "hobby": ["Sport"],
+            },
+            "product_types": ["College Sweatshirt", "Embroidered Sweatshirt"],
+        }
+        adapter.suggest_product_categories.return_value = [{
+            "id": "gid://shopify/TaxonomyCategory/aa-1-13-14",
+            "name": "Sweatshirts",
+            "full_name": "Apparel & Accessories > Clothing > Clothing Tops > Sweatshirts",
+        }]
+        adapter.search_product_categories.return_value = [{
+            "id": "gid://shopify/TaxonomyCategory/aa-1-1-7-4",
+            "name": "Sweatshirts",
+            "full_name": "Apparel & Accessories > Clothing > Activewear > Activewear Sweatshirts & Hoodies > Sweatshirts",
+        }]
+
+        reference = self.client.get(f"/product-workflow/drafts/{draft_id}/shopify-reference-data")
+        recommended = self.client.get(
+            f"/product-workflow/drafts/{draft_id}/shopify-categories?recommend=1&title=College+Sweatshirt"
+        )
+        searched = self.client.get(
+            f"/product-workflow/drafts/{draft_id}/shopify-categories?q=activewear+sweatshirt"
+        )
+
+        self.assertEqual(reference.status_code, 200)
+        self.assertEqual(len(reference.get_json()["metafield_choices"]), 6)
+        self.assertIn("College Sweatshirt", reference.get_json()["product_types"])
+        self.assertEqual(recommended.get_json()["categories"][0]["name"], "Sweatshirts")
+        self.assertIn("Activewear", searched.get_json()["categories"][0]["full_name"])
+        adapter.suggest_product_categories.assert_called_once_with("College Sweatshirt", first=8)
+        adapter.search_product_categories.assert_called_once_with("activewear sweatshirt", first=8)
+
+    def test_shopify_reference_data_parses_choices_and_all_product_type_pages(self):
+        store_id = self.create_store()
+        with self.app.app_context():
+            adapter = ShopifyAdapter(db.session.get(StoreConnection, store_id))
+            adapter._graphql = MagicMock(side_effect=[
+                {
+                    "metafieldDefinitions": {"nodes": [
+                        {
+                            "key": "product_developer_name",
+                            "type": {"name": "single_line_text_field"},
+                            "validations": [{"name": "choices", "value": json.dumps(["Nancy", "Liu XiaoJie"])}],
+                        },
+                        {
+                            "key": "recipient",
+                            "type": {"name": "list.single_line_text_field"},
+                            "validations": [{"name": "choices", "value": json.dumps(["Team", "Mom"])}],
+                        },
+                    ]},
+                    "productTypes": {
+                        "nodes": ["College Sweatshirt"],
+                        "pageInfo": {"hasNextPage": True, "endCursor": "types-page-2"},
+                    },
+                },
+                {
+                    "productTypes": {
+                        "nodes": ["Embroidered Sweatshirt", "College Sweatshirt"],
+                        "pageInfo": {"hasNextPage": False, "endCursor": None},
+                    }
+                },
+            ])
+
+            result = adapter.editor_reference_data()
+
+            self.assertEqual(result["metafield_choices"]["product_developer_name"], ["Nancy", "Liu XiaoJie"])
+            self.assertEqual(result["metafield_choices"]["recipient"], ["Team", "Mom"])
+            self.assertEqual(result["metafield_choices"]["design"], [])
+            self.assertEqual(result["product_types"], ["College Sweatshirt", "Embroidered Sweatshirt"])
+            self.assertEqual(adapter._graphql.call_count, 2)
+            self.assertEqual(adapter._graphql.call_args_list[1].args[1]["after"], "types-page-2")
+
+    def test_shopify_category_recommendation_uses_product_title_keywords(self):
+        store_id = self.create_store()
+        with self.app.app_context():
+            adapter = ShopifyAdapter(db.session.get(StoreConnection, store_id))
+            adapter._graphql = MagicMock(return_value={
+                "taxonomy": {"categories": {"nodes": [
+                    {
+                        "id": "gid://shopify/TaxonomyCategory/aa-1-13-14",
+                        "name": "Sweatshirts",
+                        "fullName": "Apparel & Accessories > Clothing > Clothing Tops > Sweatshirts",
+                        "isLeaf": True,
+                        "isArchived": False,
+                    },
+                    {
+                        "id": "gid://shopify/TaxonomyCategory/archived",
+                        "name": "Archived",
+                        "fullName": "Archived",
+                        "isLeaf": True,
+                        "isArchived": True,
+                    },
+                ]}}
+            })
+
+            categories = adapter.suggest_product_categories(
+                "Personalization Texas State University Landmark Buildings Embroidery T Shirt Sweatshirt Hoodie Cs Mj260612006"
+            )
+
+            self.assertEqual(len(categories), 1)
+            self.assertEqual(categories[0]["name"], "Sweatshirts")
+            self.assertEqual(adapter._graphql.call_args.args[1]["search"], "Sweatshirt Hoodie")
     def test_shopify_creates_pinned_product_metafield_definitions(self):
         store_id = self.create_store()
         with self.app.app_context():
@@ -545,7 +689,8 @@ class ProductWorkflowTest(unittest.TestCase):
                 )
             ])
             adapter._graphql = MagicMock(side_effect=responses)
-            field_types = adapter._ensure_product_metafield_definitions()
+            metadata = adapter._ensure_product_metafield_definitions()
+            field_types = metadata["types"]
 
             self.assertEqual(
                 field_types,
@@ -574,7 +719,7 @@ class ProductWorkflowTest(unittest.TestCase):
         with self.app.app_context():
             draft = StoreProductDraft.query.one()
             draft.product_metafields_json = json.dumps({
-                "elements": "Sport & Team Spirit",
+                "design": "Sport & Team Spirit",
                 "recipient": "Team",
                 "hobby": "Sport",
             })
@@ -597,7 +742,8 @@ class ProductWorkflowTest(unittest.TestCase):
             adapter = ShopifyAdapter(db.session.get(StoreConnection, store_id))
             adapter._graphql = MagicMock(return_value={"metafieldDefinitions": {"nodes": nodes}})
 
-            detected_types = adapter._ensure_product_metafield_definitions()
+            metadata = adapter._ensure_product_metafield_definitions()
+            detected_types = metadata["types"]
             payload = adapter._product_input(draft, publish=False, metafield_types=detected_types)
             metafields = {
                 item["key"]: item
@@ -606,8 +752,8 @@ class ProductWorkflowTest(unittest.TestCase):
             }
 
             self.assertEqual(detected_types, types)
-            self.assertEqual(metafields["elements"]["type"], "single_line_text_field")
-            self.assertEqual(metafields["elements"]["value"], "Sport & Team Spirit")
+            self.assertEqual(metafields["design"]["type"], "single_line_text_field")
+            self.assertEqual(metafields["design"]["value"], "Sport & Team Spirit")
             self.assertEqual(metafields["recipient"]["type"], "list.single_line_text_field")
             self.assertEqual(json.loads(metafields["recipient"]["value"]), ["Team"])
             self.assertEqual(metafields["hobby"]["type"], "list.single_line_text_field")
@@ -631,6 +777,48 @@ class ProductWorkflowTest(unittest.TestCase):
             self.assertIn("custom.hobby=number_integer", message)
             adapter._graphql.assert_called_once()
 
+    def test_shopify_rejects_values_outside_existing_choice_dataset(self):
+        item_id = self.move_product(self.create_product())
+        store_id = self.create_store()
+        self.claim(item_id, [store_id])
+        with self.app.app_context():
+            draft = StoreProductDraft.query.one()
+            draft.product_metafields_json = json.dumps({"recipient": "Unknown recipient"})
+            adapter = ShopifyAdapter(db.session.get(StoreConnection, store_id))
+            adapter._ensure_product_metafield_definitions = MagicMock(return_value={
+                "types": {"recipient": "list.single_line_text_field"},
+                "choices": {"recipient": ["Team", "Mom"]},
+            })
+            adapter._graphql = MagicMock()
+
+            with self.assertRaises(StoreAPIError) as context:
+                adapter.sync_product(draft, publish=False)
+
+            self.assertIn("Recipient", str(context.exception))
+            self.assertIn("不在店铺可选数据集中", str(context.exception))
+            adapter._graphql.assert_not_called()
+
+    def test_shopify_deletes_only_existing_legacy_metafield_values(self):
+        store_id = self.create_store()
+        with self.app.app_context():
+            adapter = ShopifyAdapter(db.session.get(StoreConnection, store_id))
+            adapter._graphql = MagicMock(side_effect=[
+                {
+                    "node": {"metafields": {"nodes": [
+                        {"namespace": "custom", "key": "product_developer"},
+                        {"namespace": "custom", "key": "elements"},
+                        {"namespace": "custom", "key": "product_developer_name"},
+                    ]}}
+                },
+                {"metafieldsDelete": {"deletedMetafields": [], "userErrors": []}},
+            ])
+
+            adapter._delete_legacy_product_metafields("gid://shopify/Product/9")
+
+            identifiers = adapter._graphql.call_args_list[1].args[1]["metafields"]
+            self.assertEqual({item["key"] for item in identifiers}, {"product_developer", "elements"})
+            self.assertTrue(all(item["ownerId"] == "gid://shopify/Product/9" for item in identifiers))
+
     def test_shopify_deletes_blank_product_metafields_on_update(self):
         item_id = self.move_product(self.create_product())
         store_id = self.create_store()
@@ -651,7 +839,7 @@ class ProductWorkflowTest(unittest.TestCase):
             deleted_keys = {item["key"] for item in identifiers}
             self.assertNotIn("product_developer", deleted_keys)
             self.assertEqual(deleted_keys, {
-                "product_specialist", "elements", "occasion", "recipient", "hobby"
+                "product_specialist_name", "design", "holiday", "recipient", "hobby"
             })
 
     @patch("app.services.store_publish_service._request_json")
