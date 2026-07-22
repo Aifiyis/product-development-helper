@@ -396,6 +396,7 @@ def _create_inbox_snapshot(product):
         source_domain=product.source_domain,
         source_url=product.product_url,
         product_type="",
+        base_sku=f"PDH-{product.id}",
         title=product.title or f"未命名产品 {product.id}",
         description_html=_sanitize_html(product.description),
         tags_json=product.product_tags or "[]",
@@ -437,6 +438,7 @@ def _create_store_draft(item, store):
         inbox_item=item,
         store=store,
         product_type=item.product_type,
+        base_sku=item.base_sku,
         title=item.title,
         description_html=_sanitize_html(item.description_html),
         tags_json=item.tags_json,
@@ -473,16 +475,13 @@ def _create_store_draft(item, store):
 def _update_inbox_item_from_form(item):
     item.title = request.form.get("title", "").strip()
     item.product_type = request.form.get("product_type", "").strip()
+    item.base_sku = request.form.get("base_sku", "").strip()
     item.description_html = _sanitize_html(request.form.get("description_html", ""))
     tags = [value.strip() for value in request.form.get("tags", "").split(",") if value.strip()]
     item.tags_json = json.dumps(tags, ensure_ascii=False)
-    options = _json_value(request.form.get("options_json"), [])
-    item.options_json = json.dumps([
-        {"name": str(option.get("name") or "").strip(), "values": [
-            str(value).strip() for value in option.get("values") or [] if str(value).strip()
-        ]}
-        for option in options if isinstance(option, dict) and str(option.get("name") or "").strip()
-    ], ensure_ascii=False)
+    options = _normalize_options(_json_value(request.form.get("options_json"), []))
+    item.options_json = json.dumps(options, ensure_ascii=False)
+    option_names = [option["name"] for option in options]
 
     existing_variants = {variant.id: variant for variant in item.variants}
     retained_ids = set()
@@ -493,7 +492,10 @@ def _update_inbox_item_from_form(item):
         if variant.id:
             retained_ids.add(variant.id)
         variant.option_values_json = json.dumps(
-            _json_value(request.form.get(f"variant_options-{index}"), {}), ensure_ascii=False
+            _variant_values_for_options(
+                _json_value(request.form.get(f"variant_options-{index}"), {}), option_names
+            ),
+            ensure_ascii=False,
         )
         variant.sku = request.form.get(f"variant_sku-{index}", "").strip()
         variant.price = _decimal(request.form.get(f"variant_price-{index}"))
@@ -535,6 +537,7 @@ def _update_inbox_item_from_form(item):
 def _update_draft_from_form(draft):
     draft.title = request.form.get("title", "").strip()
     draft.product_type = request.form.get("product_type", "").strip()
+    draft.base_sku = request.form.get("base_sku", "").strip()
     draft.description_html = _sanitize_html(request.form.get("description_html", ""))
     tags = [item.strip() for item in request.form.get("tags", "").split(",") if item.strip()]
     draft.tags_json = json.dumps(tags, ensure_ascii=False)
@@ -546,13 +549,9 @@ def _update_draft_from_form(draft):
         if request.form.get(f'metafield_{definition["key"]}', "").strip()
     }, ensure_ascii=False)
 
-    options = _json_value(request.form.get("options_json"), [])
-    draft.options_json = json.dumps([
-        {"name": str(item.get("name") or "").strip(), "values": [
-            str(value).strip() for value in item.get("values") or [] if str(value).strip()
-        ]}
-        for item in options if isinstance(item, dict) and str(item.get("name") or "").strip()
-    ], ensure_ascii=False)
+    options = _normalize_options(_json_value(request.form.get("options_json"), []))
+    draft.options_json = json.dumps(options, ensure_ascii=False)
+    option_names = [option["name"] for option in options]
 
     existing_variants = {item.id: item for item in draft.variants}
     retained_ids = set()
@@ -563,7 +562,9 @@ def _update_draft_from_form(draft):
         if variant.id:
             retained_ids.add(variant.id)
         variant.option_values_json = json.dumps(
-            _json_value(request.form.get(f"variant_options-{index}"), {}),
+            _variant_values_for_options(
+                _json_value(request.form.get(f"variant_options-{index}"), {}), option_names
+            ),
             ensure_ascii=False,
         )
         variant.sku = request.form.get(f"variant_sku-{index}", "").strip()
@@ -639,6 +640,26 @@ def _variant_for_editor(variant):
         "package_length_cm": str(variant.package_length_cm or ""),
         "package_width_cm": str(variant.package_width_cm or ""),
         "package_height_cm": str(variant.package_height_cm or ""),
+    }
+
+
+def _normalize_options(raw_options):
+    return [
+        {"name": str(option.get("name") or "").strip(), "values": [
+            str(value).strip() for value in option.get("values") or [] if str(value).strip()
+        ]}
+        for option in raw_options
+        if isinstance(option, dict) and str(option.get("name") or "").strip()
+    ]
+
+
+def _variant_values_for_options(raw_values, option_names):
+    if not isinstance(raw_values, dict):
+        return {}
+    return {
+        name: str(raw_values.get(name)).strip()
+        for name in option_names
+        if raw_values.get(name) not in (None, "") and str(raw_values.get(name)).strip()
     }
 
 

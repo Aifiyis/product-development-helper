@@ -167,6 +167,9 @@ def ensure_schema_columns():
     if "options_json" not in inbox_columns:
         db.session.execute(text("ALTER TABLE product_inbox_items ADD COLUMN options_json TEXT"))
         db.session.commit()
+    if "base_sku" not in inbox_columns:
+        db.session.execute(text("ALTER TABLE product_inbox_items ADD COLUMN base_sku VARCHAR(255)"))
+        db.session.commit()
     inbox_image_columns = {column["name"] for column in inspect(db.engine).get_columns("inbox_product_images")}
     if "local_path" not in inbox_image_columns:
         db.session.execute(text("ALTER TABLE inbox_product_images ADD COLUMN local_path VARCHAR(1000)"))
@@ -178,6 +181,9 @@ def ensure_schema_columns():
     draft_columns = {column["name"] for column in inspect(db.engine).get_columns("store_product_drafts")}
     if "product_metafields_json" not in draft_columns:
         db.session.execute(text("ALTER TABLE store_product_drafts ADD COLUMN product_metafields_json TEXT"))
+        db.session.commit()
+    if "base_sku" not in draft_columns:
+        db.session.execute(text("ALTER TABLE store_product_drafts ADD COLUMN base_sku VARCHAR(255)"))
         db.session.commit()
     image_columns = {column["name"] for column in inspect(db.engine).get_columns("draft_product_images")}
     if "remote_media_id" not in image_columns:

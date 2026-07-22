@@ -620,6 +620,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const variantCount = editorForm.querySelector("[data-variant-count]");
     const variantCountLabel = editorForm.querySelector("[data-variant-count-label]");
     const addOption = editorForm.querySelector("[data-add-option]");
+    const baseSkuInput = editorForm.querySelector("[data-base-sku]");
+    const skuOptionSelector = editorForm.querySelector("[data-sku-option-selector]");
+    const generateSkuButton = editorForm.querySelector("[data-generate-sku]");
     const escapeHtml = (value) => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;")
         .replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
     const signature = (values) => JSON.stringify(options.map((option) => [option.name, values?.[option.name] || ""]));
@@ -647,6 +650,20 @@ document.addEventListener("DOMContentLoaded", () => {
         return state;
     };
     const deepClone = (value) => JSON.parse(JSON.stringify(value));
+    const normalizeSkuPart = (value) => String(value || "").trim().replace(/\s+/g, "-").replace(/^-+|-+$/g, "");
+    const renderSkuOptionSelector = () => {
+        if (!skuOptionSelector) return;
+        if (!options.length) {
+            skuOptionSelector.innerHTML = '<span>无变体属性，将只使用基础 SKU</span>';
+            return;
+        }
+        skuOptionSelector.innerHTML = options.map((option, index) => `
+            <label class="form-check form-check-inline">
+                <input class="form-check-input" type="checkbox" value="${index}" data-sku-option-index checked>
+                <span>-第${index + 1}个变体属性（${escapeHtml(option.name)}）</span>
+            </label>
+        `).join("");
+    };
     const editorHistory = [];
     let optionEditSnapshot = null;
     const captureEditorState = () => ({
@@ -666,7 +683,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const fallback = previousValues[0] || variants[0] || {};
         variants = combinations().map((values, index) => {
             const exact = previous.get(signature(values));
-            if (exact) return exact;
+            if (exact) return { ...exact, options: values };
             const inherited = previousValues.find((item) => Object.entries(item.options || {}).every(
                 ([name, value]) => values[name] === value
             )) || fallback;
@@ -718,6 +735,7 @@ document.addEventListener("DOMContentLoaded", () => {
             variants = Array.from(readVariantTable().values()); options = readOptions(); options.splice(Number(button.dataset.removeOption), 1); variantBody.innerHTML = ""; renderOptions(); renderVariants();
         }));
         addOption.disabled = options.length >= 3;
+        renderSkuOptionSelector();
     };
     addOption?.addEventListener("click", () => {
         if (options.length >= 3) return;
@@ -726,6 +744,31 @@ document.addEventListener("DOMContentLoaded", () => {
         options.push({ name: `Option ${options.length + 1}`, values: ["Default"] });
         variantBody.innerHTML = "";
         renderOptions(); renderVariants();
+    });
+    generateSkuButton?.addEventListener("click", () => {
+        const baseSku = normalizeSkuPart(baseSkuInput?.value);
+        if (!baseSku) {
+            window.alert("请先填写基础 SKU。");
+            baseSkuInput?.focus();
+            return;
+        }
+        const selectedIndexes = Array.from(
+            skuOptionSelector?.querySelectorAll("[data-sku-option-index]:checked") || []
+        ).map((input) => Number(input.value));
+        if (variantBody.querySelectorAll("[data-variant-row]").length > 1 && !selectedIndexes.length) {
+            window.alert("多个变体至少需要选择一个拼接属性，以避免生成重复 SKU。");
+            return;
+        }
+        rememberEditorState();
+        variantBody.querySelectorAll("[data-variant-row]").forEach((row) => {
+            const index = row.dataset.variantRow;
+            const values = JSON.parse(row.querySelector(`[name="variant_options-${index}"]`).value);
+            const suffixes = selectedIndexes.map((optionIndex) => (
+                normalizeSkuPart(values[options[optionIndex]?.name])
+            )).filter(Boolean);
+            row.querySelector(`[name="variant_sku-${index}"]`).value = [baseSku, ...suffixes].join("-").slice(0, 255);
+        });
+        variants = Array.from(readVariantTable().values());
     });
     variantBody.addEventListener("change", (event) => {
         const input = event.target.closest("[data-variant-image-input]");

@@ -49,6 +49,15 @@ def adapter_for(store):
     raise StoreAPIError(f"暂不支持店铺平台：{store.platform}")
 
 
+def _draft_option_names(draft):
+    return [item.get("name") for item in draft.options if item.get("name")]
+
+
+def _variant_options_for_draft(draft, variant):
+    values = variant.option_values
+    return {name: str(values.get(name) or "").strip() for name in _draft_option_names(draft)}
+
+
 def validate_draft(draft):
     errors = []
     if not (draft.title or "").strip():
@@ -62,7 +71,6 @@ def validate_draft(draft):
         errors.append("至少需要一个变体")
     seen_skus = set()
     seen_options = set()
-    expected_option_names = {item.get("name") for item in draft.options if item.get("name")}
     for index, variant in enumerate(draft.variants, start=1):
         sku = (variant.sku or "").strip()
         if not sku:
@@ -70,11 +78,12 @@ def validate_draft(draft):
         elif sku.lower() in seen_skus:
             errors.append(f"SKU 重复：{sku}")
         seen_skus.add(sku.lower())
-        signature = json.dumps(variant.option_values, ensure_ascii=False, sort_keys=True)
+        normalized_options = _variant_options_for_draft(draft, variant)
+        signature = json.dumps(normalized_options, ensure_ascii=False, sort_keys=True)
         if signature in seen_options:
             errors.append(f"第 {index} 个变体选项组合重复")
         seen_options.add(signature)
-        if set(variant.option_values) != expected_option_names:
+        if any(not value for value in normalized_options.values()):
             errors.append(f"第 {index} 个变体的选项组合不完整")
         if variant.local_image_path and not (variant.image_url or "").lower().startswith("https://"):
             errors.append(f"第 {index} 个变体上传图片必须通过 PUBLIC_BASE_URL 暴露为 HTTPS 地址")
@@ -347,7 +356,7 @@ class ShopifyAdapter:
                 "price": _money(variant.price),
                 "optionValues": [
                     {"optionName": name, "name": value}
-                    for name, value in variant.option_values.items()
+                    for name, value in _variant_options_for_draft(draft, variant).items()
                     if name and value
                 ],
             }
@@ -476,9 +485,10 @@ class ShoplazzaAdapter:
         return {"remote_product_id": str(remote_id), "remote_handle": handle, "remote_url": remote_url}
 
     def _product_payload(self, draft, publish):
-        option_names = [item.get("name") for item in draft.options if item.get("name")]
+        option_names = _draft_option_names(draft)
         variants = []
         for variant in draft.variants:
+            option_values = _variant_options_for_draft(draft, variant)
             item = {
                 "sku": variant.sku,
                 "price": float(variant.price),
@@ -488,7 +498,7 @@ class ShoplazzaAdapter:
             if variant.compare_at_price is not None:
                 item["compare_at_price"] = float(variant.compare_at_price)
             for index, name in enumerate(option_names[:3], start=1):
-                item[f"option{index}"] = variant.option_values.get(name, "")
+                item[f"option{index}"] = option_values.get(name, "")
             if variant.image_url:
                 item["image"] = {"src": variant.image_url}
             variants.append(item)

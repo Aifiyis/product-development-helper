@@ -1,18 +1,12 @@
 {% extends "base.html" %}
 
 {% block content %}
-<section class="workflow-steps" aria-label="产品工作流">
-    <a href="{{ url_for('competitor.index') }}"><span>1</span>产品抓取</a>
-    <a href="{{ url_for('product_workflow.inbox') }}"><span>2</span>产品认领</a>
-    <span><b>3</b>编辑商品</span>
-    <span class="active"><b>4</b>店铺发布</span>
-</section>
 
 <section class="content-panel">
     <div class="panel-header">
         <div><h2>店铺管理</h2><p>逐店保存加密凭据；平台接口已预留后续 OAuth 接入。</p></div>
         <div class="toolbar">
-            <a class="btn btn-light" href="{{ url_for('product_workflow.inbox') }}">返回认领箱</a>
+            <a class="btn btn-light" href="{{ url_for('product_workflow.inbox') }}">前往认领箱</a>
             {% if current_user.can("stores.manage") %}
             <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addStoreModal"><i class="bi bi-plus-lg"></i> 添加店铺</button>
             {% endif %}

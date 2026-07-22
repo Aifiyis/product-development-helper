@@ -125,7 +125,15 @@
     </section>
 
     <section class="editor-card">
-        <div class="editor-card-header"><h3>变体信息</h3><span data-variant-count-label></span></div>
+        <div class="editor-card-header variant-info-header">
+            <div class="variant-info-title"><h3>变体信息</h3><span data-variant-count-label></span></div>
+            <div class="smart-sku-controls">
+                <label for="base-sku">基础 SKU</label>
+                <input class="form-control form-control-sm" id="base-sku" name="base_sku" value="{{ draft.base_sku or '' }}" maxlength="255" placeholder="例如：TSU006" data-base-sku>
+                <div class="sku-option-selector" data-sku-option-selector></div>
+                <button class="btn btn-outline-primary btn-sm" type="button" data-generate-sku><i class="bi bi-stars"></i> 智能 SKU 生成</button>
+            </div>
+        </div>
         <div class="editor-card-body table-responsive">
             <input type="hidden" name="variant_count" data-variant-count>
             <table class="table align-middle variant-editor-table">

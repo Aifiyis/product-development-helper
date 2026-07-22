@@ -21,7 +21,7 @@ from app.models import (
 )
 from app.services.credential_service import CredentialError, decrypt_credentials, encrypt_credentials
 from app.services.store_publish_queue import run_store_publish_by_id
-from app.services.store_publish_service import ShopifyAdapter, ShoplazzaAdapter
+from app.services.store_publish_service import ShopifyAdapter, ShoplazzaAdapter, validate_draft
 
 
 class ProductWorkflowTest(unittest.TestCase):
@@ -126,6 +126,7 @@ class ProductWorkflowTest(unittest.TestCase):
             self.assertEqual(str(item.variants[0].compare_at_price), "39.90")
             self.assertEqual(item.variants[0].inventory_quantity, 8)
             self.assertEqual(item.variants[1].sku, "SOURCE-BLUE-L")
+            self.assertEqual(item.base_sku, f"PDH-{product_id}")
 
     def test_claim_multiple_stores_and_prevent_duplicate_claims(self):
         item_id = self.move_product(self.create_product())
@@ -139,6 +140,7 @@ class ProductWorkflowTest(unittest.TestCase):
             drafts = StoreProductDraft.query.order_by(StoreProductDraft.store_connection_id).all()
             self.assertEqual(len(drafts), 3)
             self.assertTrue(all(len(draft.variants) == 2 for draft in drafts))
+            self.assertTrue(all(draft.base_sku == draft.inbox_item.base_sku for draft in drafts))
             self.assertEqual(drafts[0].options, [{"name": "Color", "values": ["Black", "Blue"]}, {"name": "Size", "values": ["M", "L"]}])
         response = self.client.get(f"/product-workflow/inbox?tab=claimed&store_id={first_store}&sku=SOURCE-BLUE-L&status=local")
         self.assertEqual(response.status_code, 200)
@@ -156,7 +158,7 @@ class ProductWorkflowTest(unittest.TestCase):
         response = self.client.post(
             f"/product-workflow/drafts/{draft_id}/edit",
             data={
-                "title": "Edited shirt", "product_type": "Apparel", "tags": "one, two",
+                "title": "Edited shirt", "product_type": "Apparel", "base_sku": "SHIRT", "tags": "one, two",
                 "description_html": '<p>Allowed</p><script>alert("x")</script>',
                 "metafield_product_developer": "Liu XiaoJie",
                 "metafield_product_specialist": "Ma RuiTing",
@@ -166,10 +168,10 @@ class ProductWorkflowTest(unittest.TestCase):
                 "metafield_hobby": "Sport",
                 "options_json": json.dumps([{"name": "Color", "values": ["Black", "Blue"]}]),
                 "variant_count": "2",
-                "variant_id-0": str(variant_ids[0]), "variant_options-0": json.dumps({"Color": "Black"}),
+                "variant_id-0": str(variant_ids[0]), "variant_options-0": json.dumps({"Color": "Black", "Size": "M"}),
                 "variant_sku-0": "BLACK", "variant_price-0": "30.50", "variant_compare_at-0": "40.00", "variant_inventory-0": "9",
                 "variant_weight-0": "0.4", "variant_length-0": "20", "variant_width-0": "15", "variant_height-0": "3",
-                "variant_id-1": str(variant_ids[1]), "variant_options-1": json.dumps({"Color": "Blue"}),
+                "variant_id-1": str(variant_ids[1]), "variant_options-1": json.dumps({"Color": "Blue", "Size": "L"}),
                 "variant_sku-1": "BLUE", "variant_price-1": "32.50", "variant_compare_at-1": "", "variant_inventory-1": "4",
                 "variant_weight-1": "0.5", "variant_length-1": "21", "variant_width-1": "16", "variant_height-1": "4",
                 "after_save": "save",
@@ -181,6 +183,8 @@ class ProductWorkflowTest(unittest.TestCase):
             self.assertNotIn("<script", draft.description_html)
             self.assertIn("alert", draft.description_html)
             self.assertEqual([variant.sku for variant in draft.variants], ["BLACK", "BLUE"])
+            self.assertEqual([variant.option_values for variant in draft.variants], [{"Color": "Black"}, {"Color": "Blue"}])
+            self.assertEqual(draft.base_sku, "SHIRT")
             self.assertEqual(str(draft.variants[0].price), "30.50")
             self.assertEqual(str(draft.variants[0].package_length_cm), "20.00")
             self.assertEqual(draft.product_metafields["product_developer"], "Liu XiaoJie")
@@ -192,6 +196,29 @@ class ProductWorkflowTest(unittest.TestCase):
         self.assertIn("批量设置（待开发）", page)
         self.assertIn("Product Developer", page)
         self.assertIn("Liu XiaoJie", page)
+        self.assertIn("基础 SKU", page)
+        self.assertIn("智能 SKU 生成", page)
+        script_response = self.client.get("/static/js/app.js")
+        script = script_response.get_data(as_text=True)
+        script_response.close()
+        self.assertIn("data-sku-option-index", script)
+        self.assertIn("if (exact) return { ...exact, options: values };", script)
+
+    def test_publish_uses_only_current_options_when_old_variant_values_remain(self):
+        item_id = self.move_product(self.create_product())
+        store_id = self.create_store()
+        self.claim(item_id, [store_id])
+        with self.app.app_context():
+            draft = StoreProductDraft.query.one()
+            draft.options_json = json.dumps([{"name": "Color", "values": ["Black", "Blue"]}])
+            self.assertTrue(all("Size" in variant.option_values for variant in draft.variants))
+            errors = validate_draft(draft)
+            self.assertFalse(any("选项组合不完整" in error for error in errors))
+            payload = ShopifyAdapter(db.session.get(StoreConnection, store_id))._product_input(draft, publish=False)
+            self.assertTrue(all(
+                [item["optionName"] for item in variant["optionValues"]] == ["Color"]
+                for variant in payload["variants"]
+            ))
 
     def test_unclaimed_item_can_be_edited_with_variant_image_before_claim(self):
         item_id = self.move_product(self.create_product())
@@ -656,6 +683,9 @@ class ProductWorkflowTest(unittest.TestCase):
         self.assertNotIn("route-super-secret", body)
         self.assertIn("••••••••（已加密保存）", body)
         self.assertIn("write_products", body)
+        self.assertNotIn('class="workflow-steps"', body)
+        self.assertIn("前往认领箱", body)
+        self.assertNotIn("返回认领箱", body)
         with self.app.app_context():
             store = StoreConnection.query.filter_by(shop_domain="route-store.myshopify.com").one()
             self.assertNotIn("route-super-secret", store.credentials_encrypted)

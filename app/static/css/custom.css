@@ -1315,6 +1315,15 @@ body {
 .editor-card-header { align-items: center; border-bottom: 1px solid #e9edf3; display: flex; justify-content: space-between; padding: 15px 18px; }
 .editor-card-header h3 { font-size: 17px; margin: 0; }
 .editor-card-header span { color: var(--text-muted); font-size: 13px; }
+.variant-info-header { align-items: flex-start; gap: 16px; }
+.variant-info-title { align-items: center; display: flex; gap: 10px; padding-top: 5px; white-space: nowrap; }
+.smart-sku-controls { align-items: center; display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.smart-sku-controls > label { font-size: 13px; font-weight: 600; margin: 0; white-space: nowrap; }
+.smart-sku-controls > input { width: 180px; }
+.sku-option-selector { align-items: center; display: flex; flex-wrap: wrap; gap: 4px; }
+.sku-option-selector .form-check { margin: 0; }
+.sku-option-selector .form-check-input { cursor: pointer; }
+.sku-option-selector .form-check span { color: var(--text-color); font-size: 12px; }
 .editor-card-body { padding: 18px; }
 .editor-fields { display: grid; gap: 16px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .editor-field-wide { grid-column: 1 / -1; }
@@ -1345,8 +1354,9 @@ body {
     .workflow-steps { grid-template-columns: repeat(2, 1fr); }
     .workflow-steps > *::after { display: none; }
     .workflow-filter, .editor-fields, .store-choice-grid { grid-template-columns: 1fr; }
-    .editor-action-bar { align-items: flex-start; flex-direction: column; gap: 10px; }
+    .editor-action-bar, .variant-info-header { align-items: flex-start; flex-direction: column; gap: 10px; }
     .editor-action-bar .toolbar { display: grid; grid-template-columns: repeat(3, 1fr); }
+    .smart-sku-controls { justify-content: flex-start; width: 100%; }
     .option-editor-row { grid-template-columns: 1fr auto; }
     .option-editor-row [data-option-values] { grid-column: 1 / -1; grid-row: 2; }
 }
