@@ -548,6 +548,9 @@ def canonical_product_url(value):
     if not parsed.scheme or not parsed.netloc:
         return (value or "").strip()
     path = parsed.path.rstrip("/") or "/"
+    lower_path = path.lower()
+    if "/collections/" in lower_path and "/products/" in lower_path:
+        path = path[lower_path.index("/products/") :]
     return urlunparse((parsed.scheme.lower(), parsed.netloc.lower(), path, "", "", ""))
 
 

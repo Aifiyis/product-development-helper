@@ -1,5 +1,5 @@
 import json
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
 from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, send_file, url_for
 from flask_login import current_user, login_required
@@ -95,6 +95,15 @@ def create_task():
         sites = [request.form.get("target_sites", "")]
     product_urls = parse_product_urls(request.form.get("product_urls", "")) if collection_mode == "product_links" else []
     category_url = request.form.get("category_url", "").strip() if collection_mode == "category" else ""
+
+    if collection_mode == "category" and is_valid_url(category_url):
+        collection_root = collection_root_from_product_url(category_url)
+        if collection_root:
+            category_url = collection_root
+        elif is_product_url(category_url):
+            collection_mode = "product_links"
+            product_urls = [category_url]
+            category_url = ""
 
     if collection_mode == "product_links":
         category_urls = [url for url in product_urls if is_collection_url(url)]
@@ -366,7 +375,25 @@ def is_collection_url(value):
     if not is_valid_url(value):
         return False
     path = urlparse(value).path.lower().rstrip("/")
-    return path == "/collections" or path.startswith("/collections/")
+    return (path == "/collections" or path.startswith("/collections/")) and "/products/" not in path
+
+
+def is_product_url(value):
+    if not is_valid_url(value):
+        return False
+    return "/products/" in urlparse(value).path.lower()
+
+
+def collection_root_from_product_url(value):
+    if not is_valid_url(value):
+        return ""
+    parsed = urlparse(value)
+    lower_path = parsed.path.lower()
+    if "/collections/" not in lower_path or "/products/" not in lower_path:
+        return ""
+    product_index = lower_path.index("/products/")
+    collection_path = parsed.path[:product_index].rstrip("/")
+    return urlunparse((parsed.scheme, parsed.netloc, collection_path, "", "", ""))
 
 def task_request_error(message):
     if request.headers.get("X-Requested-With") == "XMLHttpRequest":

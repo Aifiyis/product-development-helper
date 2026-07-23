@@ -19,6 +19,8 @@ from app.permissions import (
 
 bp = Blueprint("auth", __name__, url_prefix="/auth")
 
+HIDDEN_SUPER_ADMIN_USER_ID = 1
+
 
 @bp.route("/login", methods=["GET", "POST"])
 def login():
@@ -74,7 +76,7 @@ def users():
 
 
 def scoped_users_query():
-    query = User.query
+    query = User.query.filter(User.id != HIDDEN_SUPER_ADMIN_USER_ID)
     if current_user.normalized_role == ROLE_ADMIN:
         query = query.filter(User.role == ROLE_EMPLOYEE, User.parent_id == current_user.id)
     return query

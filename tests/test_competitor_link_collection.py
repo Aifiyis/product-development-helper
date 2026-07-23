@@ -128,6 +128,57 @@ class CompetitorLinkCollectionTest(unittest.TestCase):
             self.assertEqual(task.product_urls, "")
         enqueue_task.assert_called_once()
 
+    @patch("app.blueprints.competitor.routes.enqueue_competitor_task", return_value=True)
+    def test_category_mode_trims_collection_product_suffix(self, enqueue_task):
+        client = self.app.test_client()
+        with client.session_transaction() as session:
+            session["_user_id"] = str(self.user_id)
+            session["_fresh"] = True
+        response = client.post(
+            "/competitor/tasks",
+            data={
+                "collection_mode": "category",
+                "category_url": (
+                    "https://www.petfiestas.com/collections/whats-new/products/"
+                    "custom-pet-portrait-embroidered-sweatshirt"
+                ),
+                "category_scope": "pages",
+                "category_page_count": "1",
+            },
+            headers={"X-Requested-With": "XMLHttpRequest"},
+        )
+        self.assertEqual(response.status_code, 200)
+        with self.app.app_context():
+            task = CompetitorTask.query.one()
+            self.assertTrue(task.is_category_collection)
+            self.assertEqual(task.category_url, "https://www.petfiestas.com/collections/whats-new")
+        enqueue_task.assert_called_once()
+
+    @patch("app.blueprints.competitor.routes.enqueue_competitor_task", return_value=True)
+    def test_category_mode_with_direct_product_url_becomes_link_task(self, enqueue_task):
+        client = self.app.test_client()
+        with client.session_transaction() as session:
+            session["_user_id"] = str(self.user_id)
+            session["_fresh"] = True
+        product_url = "https://www.petfiestas.com/products/custom-pet-portrait"
+        response = client.post(
+            "/competitor/tasks",
+            data={
+                "collection_mode": "category",
+                "category_url": product_url,
+                "collection_cycle": "1d",
+            },
+            headers={"X-Requested-With": "XMLHttpRequest"},
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()["task"]
+        self.assertEqual(payload["category_label"], "链接采集")
+        with self.app.app_context():
+            task = CompetitorTask.query.one()
+            self.assertTrue(task.is_product_link_collection)
+            self.assertEqual(task.product_url_list, [product_url])
+            self.assertEqual(task.collection_cycle, "instant")
+        enqueue_task.assert_called_once()
     def test_category_form_uses_text_url_and_expandable_task_targets(self):
         with self.app.app_context():
             db.session.add(CompetitorTask(
@@ -171,6 +222,20 @@ class CompetitorLinkCollectionTest(unittest.TestCase):
         ])
         self.assertEqual(fetch.call_count, 3)
 
+    def test_category_products_deduplicate_collection_context_urls(self):
+        scraper = CompetitorScraper()
+        html = """
+        <a href="/collections/whats-new/products/pet-card">Pet card</a>
+        <a href="/products/pet-card">Pet card price</a>
+        """
+        with patch.object(scraper, "fetch_page_html", return_value=html):
+            products = scraper.fetch_category_products(
+                "https://www.petfiestas.com/collections/whats-new",
+                page_count=1,
+                platform="shoplazza",
+            )
+        self.assertEqual(len(products), 1)
+        self.assertEqual(products[0]["product_url"], "https://www.petfiestas.com/products/pet-card")
     def test_site_and_category_duplicates_only_refresh_price_and_collection_time(self):
         old_time = datetime.utcnow() - timedelta(days=1)
         with self.app.app_context():
@@ -306,6 +371,7 @@ class CompetitorLinkCollectionTest(unittest.TestCase):
     def test_collection_url_detection(self):
         self.assertTrue(is_collection_url("https://example.com/collections/best-sellers"))
         self.assertFalse(is_collection_url("https://example.com/products/one"))
+        self.assertFalse(is_collection_url("https://example.com/collections/best-sellers/products/one"))
     def test_link_collection_saves_one_product_per_url(self):
         with self.app.app_context():
             task = CompetitorTask(

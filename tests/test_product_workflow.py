@@ -65,6 +65,23 @@ class ProductWorkflowTest(unittest.TestCase):
             session["_user_id"] = str(self.user_id)
             session["_fresh"] = True
 
+    def test_user_management_hides_super_admin_id_one(self):
+        with self.app.app_context():
+            hidden_user = db.session.get(User, self.user_id)
+            hidden_user.username = "2011159843@qq.com"
+            visible_user = User(
+                username="visible-admin@example.com",
+                password_hash="unused",
+                role="admin",
+                is_active=True,
+            )
+            db.session.add(visible_user)
+            db.session.commit()
+
+        page = self.client.get("/auth/users").get_data(as_text=True)
+
+        self.assertNotIn("2011159843@qq.com", page)
+        self.assertIn("visible-admin@example.com", page)
     def create_product(self, title="Collected shirt"):
         with self.app.app_context():
             product = CompetitorProduct(
