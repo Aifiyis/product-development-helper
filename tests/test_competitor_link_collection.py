@@ -1,3 +1,4 @@
+import json
 import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -9,7 +10,12 @@ from app import register_blueprints
 from app.blueprints.competitor.routes import is_collection_url, parse_product_urls
 from app.extensions import db, login_manager
 from app.models import CompetitorProduct, CompetitorTask, User
-from app.services.competitor_scraper import CompetitorScraper, extract_structured_price, parse_standard_variants
+from app.services.competitor_scraper import (
+    CompetitorScraper,
+    extract_structured_price,
+    parse_product_detail,
+    parse_standard_variants,
+)
 
 
 class CompetitorLinkCollectionTest(unittest.TestCase):
@@ -143,6 +149,11 @@ class CompetitorLinkCollectionTest(unittest.TestCase):
         self.assertIn('placeholder="请填写店铺内分类的网址"', page)
         self.assertIn("该分类下的全部产品", page)
         self.assertIn('class="task-sites-disclosure"', page)
+        self.assertIn('data-competitor-field="media_count"', page)
+        script_response = client.get("/static/js/app.js")
+        script = script_response.get_data(as_text=True)
+        script_response.close()
+        self.assertIn('cfield("media_count").textContent = images.length;', script)
 
     def test_category_pagination_stops_after_last_product_page(self):
         scraper = CompetitorScraper()
@@ -240,6 +251,58 @@ class CompetitorLinkCollectionTest(unittest.TestCase):
         self.assertEqual(detail["previous_price"], "$12.00")
         self.assertTrue(detail["previous_collected_at"])
 
+    def test_duplicate_collection_repairs_only_missing_description_and_invalid_media(self):
+        with self.app.app_context():
+            existing = CompetitorProduct(
+                source_domain="petfiestas.com",
+                source_type="direct_product_link",
+                platform="shoplazza",
+                title="Keep this title",
+                price="$12.99",
+                product_media=json.dumps({
+                    "main": "https://img.staticdj.com/pet_{width}x.jpeg",
+                    "carousel": ["https://img.staticdj.com/pet_{width}x.jpeg"],
+                }),
+                description='<div class="description"></div>',
+                variants='[{"sku": "KEEP-VARIANT"}]',
+                product_url="https://petfiestas.com/products/pet-card",
+                collected_at=datetime.utcnow() - timedelta(days=1),
+            )
+            db.session.add(existing)
+            db.session.commit()
+            scraper = CompetitorScraper()
+            repaired = {
+                "price": "$13.99",
+                "description": "<p>Recovered product description.</p>",
+                "product_media": {
+                    "main": "https://img.staticdj.com/pet.jpeg",
+                    "carousel": [
+                        "https://img.staticdj.com/pet.jpeg",
+                        "https://img.staticdj.com/pet-side.webp",
+                    ],
+                },
+                "variants": [{"sku": "REPLACEMENT-MUST-NOT-BE-SAVED"}],
+            }
+
+            with patch.object(scraper, "enrich_product_detail", return_value=repaired) as enrich:
+                scraper.save_or_refresh_product(
+                    None,
+                    "petfiestas.com",
+                    {"product_url": existing.product_url, "price": "$13.99"},
+                    "shoplazza",
+                    [],
+                )
+            db.session.commit()
+
+            product = CompetitorProduct.query.one()
+            self.assertEqual(enrich.call_count, 1)
+            self.assertEqual(product.title, "Keep this title")
+            self.assertEqual(product.price, "$13.99")
+            self.assertIn("Recovered product description", product.description)
+            self.assertNotIn("{width}", product.product_media)
+            self.assertIn("pet-side.webp", product.product_media)
+            self.assertIn("KEEP-VARIANT", product.variants)
+            self.assertNotIn("REPLACEMENT-MUST-NOT-BE-SAVED", product.variants)
     def test_collection_url_detection(self):
         self.assertTrue(is_collection_url("https://example.com/collections/best-sellers"))
         self.assertFalse(is_collection_url("https://example.com/products/one"))
@@ -301,6 +364,113 @@ class CompetitorLinkCollectionTest(unittest.TestCase):
             source="manual",
         )
 
+    def test_shoplazza_product_detail_payload_fills_empty_description_and_gallery(self):
+        html = """
+        <div class="description"></div>
+        <script>
+        $('.product').product_detail({ product: {
+            "description": "<p>Personalized pet Christmas card description.</p>",
+            "images": [
+                {"src": "//img.staticdj.com/pet-a_{width}x.jpeg"},
+                {"src": "http://img.staticdj.com/pet-b.webp"}
+            ]
+        }});
+        </script>
+        """
+
+        detail = parse_product_detail("https://www.petfiestas.com/products/pet-card", html)
+
+        self.assertIn("Personalized pet Christmas card description", detail["description"])
+        self.assertEqual(detail["images"], [
+            "https://img.staticdj.com/pet-a.jpeg",
+            "https://img.staticdj.com/pet-b.webp",
+        ])
+
+    def test_shoplazza_ymq_product_fills_empty_description_without_replacing_valid_dom(self):
+        ymq_payload = """
+        <script>
+        window.ymq_option = window.ymq_option || {};
+        ymq_option.product = {
+            "description": "<h5>Custom 3D puff embroidery description.</h5>",
+            "images": [{"src": "//img.staticdj.com/puff.webp"}]
+        };
+        ymq_option.other = {};
+        </script>
+        """
+        empty_detail = parse_product_detail(
+            "https://www.foryourcustom.com/products/puff",
+            '<div class="description"></div>' + ymq_payload,
+        )
+        existing_detail = parse_product_detail(
+            "https://www.foryourcustom.com/products/puff",
+            '<div class="product__description"><p>Existing DOM description.</p></div>' + ymq_payload,
+        )
+
+        self.assertIn("Custom 3D puff embroidery description", empty_detail["description"])
+        self.assertEqual(empty_detail["images"], ["https://img.staticdj.com/puff.webp"])
+        self.assertIn("Existing DOM description", existing_detail["description"])
+        self.assertNotIn("Custom 3D puff", existing_detail["description"])
+
+    def test_image_only_payload_description_continues_to_json_ld_text(self):
+        html = """
+        <script>
+        $('.product').product_detail({ product: {
+            "description": "<p><img src='//img.staticdj.com/description.webp'></p>"
+        }});
+        </script>
+        <script type="application/ld+json">
+        {"@type": "Product", "description": "Complete product description from JSON-LD."}
+        </script>
+        """
+
+        detail = parse_product_detail("https://www.petfiestas.com/products/pet-card", html)
+
+        self.assertEqual(detail["description"], "Complete product description from JSON-LD.")
+
+    def test_empty_dynamic_fields_continue_to_static_page_without_overwriting_valid_data(self):
+        scraper = CompetitorScraper()
+        raw = {
+            "product_url": "https://www.foryourcustom.com/products/puff",
+            "platform": "shoplazza",
+            "title": "Collection title",
+            "price": "$32.99",
+            "description": "",
+            "product_media": {"main": "", "carousel": []},
+            "variants": [],
+            "reviews_count": 0,
+        }
+        dynamic_html = """
+        <meta property="og:title" content="Dynamic product title">
+        <meta property="og:price:amount" content="36.99">
+        <script>window.SHOPLAZZA = {};</script>
+        <div class="description"></div>
+        """
+        static_html = """
+        <meta property="og:title" content="Static product title">
+        <meta property="og:price:amount" content="99.99">
+        <meta property="og:image" content="https://img.staticdj.com/puff.webp">
+        <script>window.SHOPLAZZA = {};</script>
+        <script type="application/ld+json">
+        {"@type":"Product","description":"Fallback product description."}
+        </script>
+        <select name="options[Style]"><option>Sweatshirt</option><option>Hoodie</option></select>
+        """
+
+        with (
+            patch.object(scraper, "fetch_dynamic_html", return_value=dynamic_html),
+            patch.object(scraper, "fetch_page_html", return_value=static_html) as fetch_static,
+        ):
+            enriched = scraper.enrich_product_detail(raw)
+
+        fetch_static.assert_called_once_with(raw["product_url"])
+        self.assertEqual(enriched["title"], "Collection title")
+        self.assertEqual(enriched["price"], "$36.99")
+        self.assertEqual(enriched["description"], "Fallback product description.")
+        self.assertEqual(
+            enriched["product_media"]["carousel"],
+            ["https://img.staticdj.com/puff.webp"],
+        )
+        self.assertEqual(len(enriched["variants"]), 2)
     def test_shoplazza_structured_integer_price_is_converted_from_cents(self):
         html = """
         <script>window.SHOPLAZZA = {};</script>

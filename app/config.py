@@ -18,6 +18,10 @@ class Config:
         f"sqlite:///{BASE_DIR / 'instance' / 'app.db'}",
     ) or f"sqlite:///{BASE_DIR / 'instance' / 'app.db'}"
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    SQLALCHEMY_ENGINE_OPTIONS = (
+        {"connect_args": {"timeout": 10}}
+        if SQLALCHEMY_DATABASE_URI.startswith("sqlite") else {}
+    )
     SCHEDULER_API_ENABLED = False
     # Set GEMINI_API_KEY in .env with your real Google Gemini API key.
     GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")

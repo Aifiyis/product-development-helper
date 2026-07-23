@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from flask import Flask
+from sqlalchemy.exc import OperationalError
 
 from app import register_blueprints
 from app.extensions import db, login_manager
@@ -128,6 +129,45 @@ class ProductWorkflowTest(unittest.TestCase):
             self.assertEqual(item.variants[1].sku, "SOURCE-BLUE-L")
             self.assertEqual(item.base_sku, f"PDH-{product_id}")
 
+    def test_move_retries_when_sqlite_is_temporarily_locked(self):
+        product_id = self.create_product("Retry locked move")
+        real_commit = db.session.commit
+        commit_attempts = 0
+
+        def commit_with_one_lock():
+            nonlocal commit_attempts
+            commit_attempts += 1
+            if commit_attempts == 1:
+                raise OperationalError("INSERT", {}, Exception("database is locked"))
+            return real_commit()
+
+        with patch.object(db.session, "commit", side_effect=commit_with_one_lock):
+            response = self.client.post("/product-workflow/inbox/move", data={"product_id": product_id})
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(commit_attempts, 2)
+        with self.app.app_context():
+            item = ProductInboxItem.query.filter_by(source_product_id=product_id).one()
+            self.assertEqual(len(item.variants), 2)
+
+    def test_move_lock_failure_tells_user_to_wait_for_collection(self):
+        product_id = self.create_product("Locked until collection finishes")
+        locked_error = OperationalError("INSERT", {}, Exception("database is locked"))
+
+        with (
+            patch.object(db.session, "commit", side_effect=locked_error),
+            patch("app.blueprints.product_workflow.routes.time.sleep"),
+            self.assertLogs("app", level="ERROR"),
+        ):
+            response = self.client.post(
+                "/product-workflow/inbox/move",
+                data={"product_id": product_id},
+                follow_redirects=True,
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("认领操作需等待当前采集任务完成后再操作", response.get_data(as_text=True))
+
     def test_claim_multiple_stores_and_prevent_duplicate_claims(self):
         item_id = self.move_product(self.create_product())
         first_store = self.create_store()
@@ -207,6 +247,9 @@ class ProductWorkflowTest(unittest.TestCase):
         self.assertNotIn("custom.product_developer</small>", page)
         self.assertIn("shopify-reference-data", page)
         self.assertIn("shopify-categories", page)
+        self.assertIn('data-classic-source="product-types"', page)
+        self.assertEqual(page.count('data-classic-source="metafield:'), 6)
+        self.assertNotIn("<datalist", page)
         self.assertIn("基础 SKU", page)
         self.assertIn("智能 SKU 生成", page)
         script_response = self.client.get("/static/js/app.js")
@@ -214,6 +257,16 @@ class ProductWorkflowTest(unittest.TestCase):
         script_response.close()
         self.assertIn("data-sku-option-index", script)
         self.assertIn("if (exact) return { ...exact, options: values };", script)
+        self.assertIn('categorySearch.addEventListener("blur"', script)
+        self.assertIn('categorySearch.addEventListener("focus"', script)
+        self.assertIn("hideCategorySuggestions", script)
+        self.assertIn("renderClassicOptions", script)
+        css_response = self.client.get("/static/css/custom.css")
+        css = css_response.get_data(as_text=True)
+        css_response.close()
+        self.assertIn(".classic-search-options", css)
+        self.assertIn("height: 220px", css)
+        self.assertIn("overflow-y: scroll", css)
 
         invalid_category = self.client.post(
             f"/product-workflow/drafts/{draft_id}/edit",

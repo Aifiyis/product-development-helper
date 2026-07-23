@@ -116,14 +116,28 @@ class CompetitorScraper(ScraperBase):
             ).order_by(CompetitorProduct.collected_at.desc(), CompetitorProduct.id.desc()).first()
         if existing:
             new_price = raw.get("price")
-            if not new_price:
-                price_probe = self.enrich_product_detail({
+            repair_description = stored_description_needs_repair(existing.description)
+            repair_media = stored_media_needs_repair(existing.product_media)
+            detail_probe = None
+            if not new_price or repair_description or repair_media:
+                detail_probe = self.enrich_product_detail({
                     "product_url": product_url,
+                    "platform": existing.platform,
+                    "title": existing.title,
                     "price": None,
+                    "description": "",
                     "product_media": {},
                     "variants": [],
                 })
-                new_price = price_probe.get("price")
+            if not new_price and detail_probe:
+                new_price = detail_probe.get("price")
+            if repair_description and detail_probe and not stored_description_needs_repair(detail_probe.get("description")):
+                existing.description = detail_probe["description"]
+            if repair_media and detail_probe:
+                repaired_media = detail_probe.get("product_media") or {}
+                repaired_media_json = json.dumps(repaired_media, ensure_ascii=False)
+                if not stored_media_needs_repair(repaired_media_json):
+                    existing.product_media = repaired_media_json
             previous_collected_at = existing.collected_at
             existing.previous_price = existing.price
             existing.previous_collected_at = previous_collected_at
@@ -371,8 +385,9 @@ class CompetitorScraper(ScraperBase):
         product_url = raw.get("product_url")
         if not product_url:
             return raw
-        html = self.fetch_dynamic_html(product_url)
-        if not html:
+        dynamic_html = self.fetch_dynamic_html(product_url)
+        html = dynamic_html
+        if not dynamic_html:
             html = self.fetch_page_html(product_url)
         if not html:
             return raw
@@ -411,6 +426,36 @@ class CompetitorScraper(ScraperBase):
         else:
             variants = base_variants + (detail.get("variants") or [])
         raw["variants"] = dedupe_variants(variants)
+
+        # HTTP/page success does not mean every Shoplazza product field is
+        # populated. Parse the static representation as a secondary source
+        # and only fill fields that are still missing.
+        if dynamic_html and product_detail_needs_fallback(raw):
+            fallback_html = self.fetch_page_html(product_url)
+            if fallback_html and fallback_html != dynamic_html:
+                fallback = parse_product_detail(product_url, fallback_html)
+                if not raw.get("price") and fallback.get("price"):
+                    raw["price"] = fallback["price"]
+                if stored_description_needs_repair(raw.get("description")) and fallback.get("description"):
+                    raw["description"] = fallback["description"]
+                current_media = raw.get("product_media") or {}
+                fallback_images = unique_urls(
+                    (fallback.get("images") or [])
+                    + [
+                        variant.get("image")
+                        for variant in (fallback.get("variants") or [])
+                        if isinstance(variant, dict)
+                    ]
+                )
+                merged_images = unique_urls(
+                    [current_media.get("main")]
+                    + (current_media.get("carousel") or [])
+                    + fallback_images
+                )
+                if merged_images:
+                    raw["product_media"] = {"main": merged_images[0], "carousel": merged_images}
+                if not raw.get("variants"):
+                    raw["variants"] = dedupe_variants(fallback.get("variants") or [])
         return raw
 
     def fetch_dynamic_html(self, product_url):
@@ -651,6 +696,10 @@ def extract_product_images(product_url, html):
         images.extend(images_from_json_ld(payload))
         variant_images.extend(variant_images_from_json(payload))
 
+    for payload in product_payloads_from_scripts(html):
+        images.extend(images_from_product_payload(payload))
+        variant_images.extend(variant_images_from_json(payload))
+
     gallery_chunks = re.findall(
         r'(?is)<(?:div|section|ul|ol)[^>]+(?:class|id)=["\'][^"\']*(?:product[-_ ]?media|product[-_ ]?gallery|product[-_ ]?slider|product[-_ ]?carousel|main[-_ ]?media|media[-_ ]?gallery)[^"\']*["\'][^>]*>.*?</(?:div|section|ul|ol)>',
         html,
@@ -800,6 +849,25 @@ def parse_script_json(script):
     return None
 
 
+def product_payloads_from_scripts(html):
+    payloads = []
+    decoder = json.JSONDecoder()
+    patterns = (
+        r"\.product_detail\(\s*\{\s*product\s*:\s*(?=\{)",
+        r"\bymq_option\.product\s*=\s*(?=\{)",
+    )
+    for script in re.findall(r"(?is)<script[^>]*>(.*?)</script>", html):
+        for pattern in patterns:
+            for match in re.finditer(pattern, script):
+                try:
+                    payload, _ = decoder.raw_decode(script[match.end():])
+                except (json.JSONDecodeError, TypeError):
+                    continue
+                if isinstance(payload, dict):
+                    payloads.append(payload)
+    return payloads
+
+
 def looks_like_variant_key(key):
     return isinstance(key, str) and "variant" in key.lower()
 
@@ -837,13 +905,53 @@ def extract_images_near_link(html, href, base_url):
     )
 
 
+def stored_description_needs_repair(description):
+    return not strip_html(description or "")
+
+
+def product_detail_needs_fallback(raw):
+    return any(
+        [
+            not raw.get("price"),
+            stored_description_needs_repair(raw.get("description")),
+            stored_media_needs_repair(raw.get("product_media") or {}),
+            not raw.get("variants"),
+        ]
+    )
+
+
+def stored_media_needs_repair(raw_media):
+    if isinstance(raw_media, dict):
+        media = raw_media
+    else:
+        try:
+            media = json.loads(raw_media or "{}")
+        except (json.JSONDecodeError, TypeError):
+            return True
+    if not isinstance(media, dict):
+        return True
+    urls = [media.get("main")] + list(media.get("carousel") or [])
+    urls = [str(url).strip() for url in urls if url]
+    if not urls:
+        return True
+    return any(
+        "{width}" in url
+        or (url.startswith("http://") and urlparse(url).netloc.lower() in {"img.staticdj.com", "cdn.shoplazza.com"})
+        for url in urls
+    )
+
 def normalize_image_url(base_url, src):
     if not src:
         return ""
     src = unescape(src).strip()
+    src = re.sub(r"_\{width\}x(?=\.(?:jpg|jpeg|png|webp)(?:\?|$))", "", src, flags=re.I)
     if src.startswith("//"):
         src = "https:" + src
-    return canonical_image_url(urljoin(base_url, src))
+    normalized = urljoin(base_url, src)
+    parsed = urlparse(normalized)
+    if parsed.scheme == "http" and parsed.netloc.lower() in {"img.staticdj.com", "cdn.shoplazza.com"}:
+        normalized = urlunparse(parsed._replace(scheme="https"))
+    return canonical_image_url(normalized)
 
 
 def parse_srcset(srcset):
@@ -1201,6 +1309,7 @@ def tags_from_json(payload):
 
 
 def extract_description_html(html):
+    image_only_candidates = []
     patterns = [
         r'(?is)<(?:div|section)[^>]+(?:class|id)=["\'][^"\']*(?:product__description|product-description|product_detail|description|rte)[^"\']*["\'][^>]*>.*?</(?:div|section)>',
         r'(?is)<div[^>]+itemprop=["\']description["\'][^>]*>.*?</div>',
@@ -1208,7 +1317,60 @@ def extract_description_html(html):
     for pattern in patterns:
         match = re.search(pattern, html)
         if match:
-            return clean_html_fragment(match.group(0))
+            description = clean_html_fragment(match.group(0))
+            if strip_html(description):
+                return description
+            if re.search(r"(?is)<img\b[^>]+src=", description):
+                image_only_candidates.append(description)
+    for payload in product_payloads_from_scripts(html):
+        description = payload.get("description") or payload.get("body_html") or payload.get("content")
+        if isinstance(description, str):
+            description = clean_html_fragment(description)
+            if strip_html(description):
+                return description
+            if re.search(r"(?is)<img\b[^>]+src=", description):
+                image_only_candidates.append(description)
+    for script in re.findall(r'(?is)<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>', html):
+        try:
+            payload = json.loads(unescape(script.strip()))
+        except Exception:
+            continue
+        description = description_from_json_ld(payload)
+        if description:
+            description = clean_html_fragment(description)
+            if strip_html(description):
+                return description
+            if re.search(r"(?is)<img\b[^>]+src=", description):
+                image_only_candidates.append(description)
+    meta_description = first_match(
+        html,
+        [
+            r'<meta[^>]+property=["\']og:description["\'][^>]+content=["\']([^"\']+)["\']',
+            r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:description["\']',
+            r'<meta[^>]+name=["\']description["\'][^>]+content=["\']([^"\']+)["\']',
+            r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+name=["\']description["\']',
+        ],
+    )
+    if strip_html(meta_description):
+        return clean_html_fragment(unescape(meta_description))
+    return image_only_candidates[0] if image_only_candidates else ""
+
+def description_from_json_ld(payload):
+    if isinstance(payload, list):
+        for item in payload:
+            description = description_from_json_ld(item)
+            if description:
+                return description
+    elif isinstance(payload, dict):
+        payload_type = payload.get("@type")
+        is_product = payload_type == "Product" or (isinstance(payload_type, list) and "Product" in payload_type)
+        if is_product and isinstance(payload.get("description"), str):
+            return payload["description"]
+        for value in payload.values():
+            if isinstance(value, (dict, list)):
+                description = description_from_json_ld(value)
+                if description:
+                    return description
     return ""
 
 

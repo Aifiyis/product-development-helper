@@ -133,6 +133,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const mediaThumbsEl = cfield("media_thumbs");
             const media = product.product_media || {};
             const images = Array.from(new Set([media.main, ...(media.carousel || [])].filter(Boolean)));
+            cfield("media_count").textContent = images.length;
             mediaEl.innerHTML = images.length
                 ? images.map((src, index) => `<div class="carousel-item ${index === 0 ? "active" : ""}"><img src="${src}" alt=""></div>`).join("")
                 : '<div class="carousel-item active"><div class="competitor-media-empty">暂无图片</div></div>';
@@ -628,14 +629,46 @@ document.addEventListener("DOMContentLoaded", () => {
     const shopifyReferenceEndpoint = editorForm.dataset.shopifyReferenceEndpoint;
     const shopifyCategoryEndpoint = editorForm.dataset.shopifyCategoryEndpoint;
     const productTitleInput = editorForm.querySelector('[name="title"]');
-    const fillDataList = (element, values) => {
-        if (!element) return;
-        element.replaceChildren(...values.map((value) => {
-            const option = document.createElement("option");
-            option.value = value;
-            return option;
-        }));
+    const classicSearchSelects = Array.from(editorForm.querySelectorAll("[data-classic-search-select]"));
+    const renderClassicOptions = (container) => {
+        const input = container.querySelector("[data-classic-search-input]");
+        const optionsPanel = container.querySelector("[data-classic-search-options]");
+        const query = input.value.trim().toLowerCase();
+        const values = (container.classicValues || []).filter((value) => (
+            !query || value.toLowerCase().includes(query)
+        ));
+        optionsPanel.innerHTML = values.length
+            ? values.map((value) => `<button type="button" data-classic-option="${escapeHtml(value)}">${escapeHtml(value)}</button>`).join("")
+            : '<div class="classic-search-empty">暂无匹配选项</div>';
+        optionsPanel.hidden = false;
     };
+    const setClassicOptions = (source, values) => {
+        const container = classicSearchSelects.find((item) => item.dataset.classicSource === source);
+        if (!container) return;
+        container.classicValues = Array.from(new Set((values || []).map(String).filter(Boolean)));
+        if (document.activeElement === container.querySelector("[data-classic-search-input]")) {
+            renderClassicOptions(container);
+        }
+    };
+    classicSearchSelects.forEach((container) => {
+        container.classicValues = [];
+        const input = container.querySelector("[data-classic-search-input]");
+        const optionsPanel = container.querySelector("[data-classic-search-options]");
+        input.addEventListener("focus", () => renderClassicOptions(container));
+        input.addEventListener("click", () => renderClassicOptions(container));
+        input.addEventListener("input", () => renderClassicOptions(container));
+        input.addEventListener("blur", () => {
+            window.setTimeout(() => { optionsPanel.hidden = true; }, 120);
+        });
+        optionsPanel.addEventListener("mousedown", (event) => {
+            const option = event.target.closest("[data-classic-option]");
+            if (!option) return;
+            event.preventDefault();
+            input.value = option.dataset.classicOption;
+            input.dispatchEvent(new Event("change", { bubbles: true }));
+            optionsPanel.hidden = true;
+        });
+    });
     if (shopifyReferenceEndpoint) {
         fetch(shopifyReferenceEndpoint)
             .then(async (response) => {
@@ -644,11 +677,9 @@ document.addEventListener("DOMContentLoaded", () => {
                 return payload;
             })
             .then((payload) => {
-                fillDataList(editorForm.querySelector("[data-product-type-options]"), payload.product_types || []);
+                setClassicOptions("product-types", payload.product_types || []);
                 Object.entries(payload.metafield_choices || {}).forEach(([key, choices]) => {
-                    const target = Array.from(editorForm.querySelectorAll("[data-metafield-options]"))
-                        .find((element) => element.dataset.metafieldOptions === key);
-                    fillDataList(target, choices || []);
+                    setClassicOptions(`metafield:${key}`, choices || []);
                 });
             })
             .catch((error) => console.warn(error.message));
@@ -662,6 +693,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const categoryClear = categoryPicker.querySelector("[data-category-clear]");
         let selectedCategoryName = categorySearch.value;
         let categoryTimer = null;
+        let hideCategorySuggestions = false;
         const renderCategories = (categories, suggested) => {
             categorySuggestions.innerHTML = categories.map((category) => `
                 <button type="button" data-category-option data-category-id="${escapeHtml(category.id)}" data-category-name="${escapeHtml(category.full_name || category.name)}">
@@ -669,7 +701,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     ${suggested ? "<small>推荐</small>" : ""}
                 </button>
             `).join("");
-            categorySuggestions.hidden = !categories.length;
+            categorySuggestions.hidden = !categories.length || hideCategorySuggestions;
             categoryStatus.textContent = categories.length
                 ? `${categories.length} 个${suggested ? "推荐" : "搜索"}结果`
                 : "没有找到匹配的 Shopify Category";
@@ -703,6 +735,16 @@ document.addEventListener("DOMContentLoaded", () => {
             categorySuggestions.hidden = true;
             categoryStatus.textContent = "已选择 Shopify Category";
         });
+        categorySearch.addEventListener("blur", () => {
+            hideCategorySuggestions = true;
+            window.setTimeout(() => { categorySuggestions.hidden = true; }, 150);
+        });
+        categorySearch.addEventListener("focus", () => {
+            hideCategorySuggestions = false;
+            if (!categoryId.value && !categorySearch.value.trim()) {
+                loadCategories({ suggested: true });
+            }
+        });
         categorySearch.addEventListener("input", () => {
             if (categorySearch.value !== selectedCategoryName) categoryId.value = "";
             window.clearTimeout(categoryTimer);
@@ -715,6 +757,7 @@ document.addEventListener("DOMContentLoaded", () => {
             categoryTimer = window.setTimeout(() => loadCategories({ query }), 300);
         });
         categoryClear.addEventListener("click", () => {
+            hideCategorySuggestions = true;
             categoryId.value = "";
             categorySearch.value = "";
             selectedCategoryName = "";

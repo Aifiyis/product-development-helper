@@ -1312,6 +1312,7 @@ body {
 }
 .editor-action-bar > div { align-items: center; display: flex; gap: 8px; }
 .editor-card { background: #fff; border: 1px solid var(--panel-border); border-radius: 12px; margin-bottom: 16px; overflow: hidden; }
+.editor-card-dropdown-visible { overflow: visible; }
 .editor-card-header { align-items: center; border-bottom: 1px solid #e9edf3; display: flex; justify-content: space-between; padding: 15px 18px; }
 .editor-card-header h3 { font-size: 17px; margin: 0; }
 .editor-card-header span { color: var(--text-muted); font-size: 13px; }
@@ -1327,6 +1328,12 @@ body {
 .editor-card-body { padding: 18px; }
 .editor-fields { display: grid; gap: 16px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .editor-field-wide { grid-column: 1 / -1; }
+.classic-search-select { position: relative; width: 100%; }
+.classic-search-options { background: #fff; border: 1px solid #b8b8b8; border-radius: 0 0 4px 4px; box-shadow: 0 4px 10px rgba(0, 0, 0, .12); color: #111; height: 220px; left: 0; overflow-x: hidden; overflow-y: scroll; position: absolute; right: 0; top: calc(100% + 1px); width: 100%; z-index: 40; }
+.classic-search-options button { background: #fff; border: 0; color: #111; display: block; font-size: 14px; padding: 9px 12px; text-align: left; width: 100%; }
+.classic-search-options button:hover,
+.classic-search-options button:focus { background: #ececec; color: #000; outline: none; }
+.classic-search-empty { background: #fff; color: #666; padding: 10px 12px; }
 .category-picker { position: relative; }
 .category-picker > small { display: block; margin-top: 6px; }
 .category-suggestions { background: #fff; border: 1px solid #dfe4eb; border-radius: 8px; box-shadow: 0 10px 24px rgba(31, 45, 61, .12); left: 0; max-height: 280px; overflow-y: auto; position: absolute; right: 0; top: calc(100% - 20px); z-index: 30; }

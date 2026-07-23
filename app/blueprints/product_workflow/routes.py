@@ -1,4 +1,5 @@
 import json
+import time
 import uuid
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -6,7 +7,7 @@ from pathlib import Path
 import bleach
 from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, send_from_directory, url_for
 from flask_login import current_user, login_required
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from werkzeug.utils import secure_filename
 
 from app.extensions import db
@@ -108,15 +109,61 @@ def move_to_inbox():
         flash("请至少选择一个产品。", "warning")
         return redirect(url_for("competitor.index"))
 
-    created = 0
-    skipped = 0
-    for product in CompetitorProduct.query.filter(CompetitorProduct.id.in_(product_ids)).all():
-        if ProductInboxItem.query.filter_by(source_product_id=product.id).first():
-            skipped += 1
-            continue
-        _create_inbox_snapshot(product)
-        created += 1
-    db.session.commit()
+    error_reference = uuid.uuid4().hex[:8]
+    for attempt in range(3):
+        created = 0
+        skipped = 0
+        try:
+            for product in CompetitorProduct.query.filter(CompetitorProduct.id.in_(product_ids)).all():
+                if ProductInboxItem.query.filter_by(source_product_id=product.id).first():
+                    skipped += 1
+                    continue
+                _create_inbox_snapshot(product)
+                created += 1
+            db.session.commit()
+            break
+        except IntegrityError as exc:
+            db.session.rollback()
+            if attempt < 2:
+                time.sleep(0.2 * (attempt + 1))
+                continue
+            current_app.logger.exception(
+                "Move to product inbox failed after concurrent-write retries [ref=%s product_ids=%s]",
+                error_reference, product_ids,
+            )
+            detail = f"{type(exc).__name__}: {exc}" if current_app.debug else f"错误编号：{error_reference}"
+            flash(f"移入认领箱失败，可能存在重复提交。{detail}", "danger")
+            return redirect(request.referrer or url_for("competitor.index"))
+        except OperationalError as exc:
+            db.session.rollback()
+            is_locked = "database is locked" in str(exc).lower()
+            if is_locked and attempt < 2:
+                current_app.logger.warning(
+                    "SQLite was busy while moving products to inbox; retrying [attempt=%s ref=%s product_ids=%s]",
+                    attempt + 1, error_reference, product_ids,
+                )
+                time.sleep(0.2 * (attempt + 1))
+                continue
+            current_app.logger.exception(
+                "Move to product inbox failed with database error [ref=%s product_ids=%s]",
+                error_reference, product_ids,
+            )
+            detail = f"{type(exc).__name__}: {exc}" if current_app.debug else f"错误编号：{error_reference}"
+            message = (
+                "当前采集任务正在写入产品数据，认领操作需等待当前采集任务完成后再操作。"
+                if is_locked else "移入认领箱失败，数据库暂时不可用。"
+            )
+            flash(f"{message}{detail}", "danger")
+            return redirect(request.referrer or url_for("competitor.index"))
+        except Exception as exc:
+            db.session.rollback()
+            current_app.logger.exception(
+                "Move to product inbox failed [ref=%s product_ids=%s]",
+                error_reference, product_ids,
+            )
+            detail = f"{type(exc).__name__}: {exc}" if current_app.debug else f"错误编号：{error_reference}"
+            flash(f"移入认领箱失败。{detail}", "danger")
+            return redirect(request.referrer or url_for("competitor.index"))
     flash(f"已移入 {created} 个产品，跳过 {skipped} 个已存在产品。", "success")
     return redirect(request.referrer or url_for("competitor.index"))
 

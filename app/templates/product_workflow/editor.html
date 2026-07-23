@@ -46,7 +46,7 @@
         </div>
     </header>
 
-    <section class="editor-card">
+    <section class="editor-card editor-card-dropdown-visible">
         <div class="editor-card-header"><h3>基本信息</h3><span>{{ "认领后将复制到所选店铺" if is_inbox_editor else "各字段只影响当前目标店铺" }}</span></div>
         <div class="editor-card-body editor-fields">
             <div class="editor-field-wide">
@@ -79,8 +79,14 @@
             {% endif %}
             <div>
                 <label class="form-label">产品类型(Type)</label>
-                <input class="form-control" name="product_type" value="{{ draft.product_type or '' }}" list="shopify-product-type-options" autocomplete="off">
-                <datalist id="shopify-product-type-options" data-product-type-options></datalist>
+                {% if shopify_reference_url %}
+                <div class="classic-search-select" data-classic-search-select data-classic-source="product-types">
+                    <input class="form-control" name="product_type" value="{{ draft.product_type or '' }}" autocomplete="off" data-classic-search-input>
+                    <div class="classic-search-options" data-classic-search-options hidden></div>
+                </div>
+                {% else %}
+                <input class="form-control" name="product_type" value="{{ draft.product_type or '' }}" autocomplete="off">
+                {% endif %}
             </div>
             <div class="editor-field-wide">
                 <label class="form-label">产品标题</label>
@@ -97,7 +103,7 @@
     </section>
 
     {% if not is_inbox_editor %}
-    <section class="editor-card">
+    <section class="editor-card editor-card-dropdown-visible">
         <div class="editor-card-header">
             <h3>Product metafields</h3>
             <span>同步到 Shopify 商品的 custom.* 字段；Shoplazza 暂仅保存在本系统。</span>
@@ -106,16 +112,22 @@
             {% for definition in product_metafield_definitions %}
             <div>
                 <label class="form-label" for="metafield-{{ definition.key }}">{{ definition.label }}</label>
-                <input
-                    class="form-control"
-                    id="metafield-{{ definition.key }}"
-                    name="metafield_{{ definition.key }}"
-                    value="{{ editor_metafield_values.get(definition.key, '') }}"
-                    maxlength="255"
-                    list="metafield-options-{{ definition.key }}"
-                    autocomplete="off"
-                >
-                <datalist id="metafield-options-{{ definition.key }}" data-metafield-options="{{ definition.key }}"></datalist>
+                {% if shopify_reference_url %}
+                <div class="classic-search-select" data-classic-search-select data-classic-source="metafield:{{ definition.key }}">
+                    <input
+                        class="form-control"
+                        id="metafield-{{ definition.key }}"
+                        name="metafield_{{ definition.key }}"
+                        value="{{ editor_metafield_values.get(definition.key, '') }}"
+                        maxlength="255"
+                        autocomplete="off"
+                        data-classic-search-input
+                    >
+                    <div class="classic-search-options" data-classic-search-options hidden></div>
+                </div>
+                {% else %}
+                <input class="form-control" id="metafield-{{ definition.key }}" name="metafield_{{ definition.key }}" value="{{ editor_metafield_values.get(definition.key, '') }}" maxlength="255" autocomplete="off">
+                {% endif %}
                 <small class="text-muted">custom.{{ definition.key }}</small>
             </div>
             {% endfor %}
