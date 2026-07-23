@@ -5,7 +5,7 @@
     <div class="panel-header">
         <div>
             <h2>用户管理</h2>
-            <p>超级管理员可创建管理员和员工；管理员只能创建和管理自己的下属员工。</p>
+
         </div>
         <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createUserModal">
             <i class="bi bi-plus-lg"></i>
@@ -56,7 +56,7 @@
 
 <div class="modal fade" id="createUserModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
-        <form method="post" class="modal-content">
+        <form method="post" class="modal-content" autocomplete="off">
             <input type="hidden" name="action" value="create">
             <div class="modal-header">
                 <h5 class="modal-title">新建用户</h5>
@@ -66,11 +66,11 @@
                 <div class="row g-3">
                     <div class="col-md-3">
                         <label class="form-label">用户名</label>
-                        <input class="form-control" name="username" required>
+                        <input class="form-control" name="username" value="" autocomplete="new-username" required>
                     </div>
                     <div class="col-md-3">
                         <label class="form-label">密码</label>
-                        <input class="form-control" name="password" type="password" required>
+                        <input class="form-control" name="password" type="password" value="" autocomplete="new-password" required>
                     </div>
                     <div class="col-md-3">
                         <label class="form-label">角色</label>

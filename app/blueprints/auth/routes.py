@@ -1,5 +1,6 @@
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required, login_user, logout_user
+from sqlalchemy import and_, or_
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from app.extensions import db
@@ -78,7 +79,12 @@ def users():
 def scoped_users_query():
     query = User.query.filter(User.id != HIDDEN_SUPER_ADMIN_USER_ID)
     if current_user.normalized_role == ROLE_ADMIN:
-        query = query.filter(User.role == ROLE_EMPLOYEE, User.parent_id == current_user.id)
+        query = query.filter(
+            or_(
+                User.id == current_user.id,
+                and_(User.role == ROLE_EMPLOYEE, User.parent_id == current_user.id),
+            )
+        )
     return query
 
 
